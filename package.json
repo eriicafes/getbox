@@ -16,10 +16,20 @@
         "types": "./dist/index.d.cts",
         "default": "./dist/index.cjs"
       }
+    },
+    "./context": {
+      "import": {
+        "types": "./dist/context.d.mts",
+        "default": "./dist/context.mjs"
+      },
+      "require": {
+        "types": "./dist/context.d.cts",
+        "default": "./dist/context.cjs"
+      }
     }
   },
   "scripts": {
-    "build": "tsc && tsdown src/index.ts --format esm,cjs",
+    "build": "tsc && tsdown src/index.ts src/context.ts --format esm,cjs",
     "release": "pnpm run build && changeset publish",
     "watch": "vitest",
     "test": "vitest run",
@@ -44,6 +54,7 @@
   "homepage": "https://github.com/eriicafes/getbox#readme",
   "devDependencies": {
     "@changesets/cli": "^2.29.8",
+    "@types/node": "^25.2.3",
     "@vitest/coverage-v8": "^4.0.16",
     "tsdown": "^0.18.3",
     "typescript": "^5.9.3",

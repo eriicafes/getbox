@@ -6,6 +6,8 @@
 
 Callers know the type of the value they need, but not how it will be derived. The box resolves constructors lazily and caches instances automatically.
 
+For an alternative pattern using AsyncLocalStorage where classes can resolve dependencies directly in their constructors, see [getbox/context](./CONTEXT.md).
+
 ## Installation
 
 ```sh

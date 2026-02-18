@@ -194,7 +194,9 @@ class Construct<T extends ClassConstructor<any>> {
   /**
    * Resolves each dependency as a new transient instance via {@link Box.new},
    * meaning dependencies are not cached or shared.
-   * The returned instance itself is also never cached.
+   *
+   * The returned instance is cached or transient depending on whether the
+   * class is retrieved via {@link Box.get} or {@link Box.new}.
    *
    * @example
    * ```ts
@@ -214,7 +216,9 @@ class Construct<T extends ClassConstructor<any>> {
   /**
    * Resolves each dependency as a cached instance via {@link Box.get},
    * meaning dependencies are shared across the box.
-   * The returned instance itself is never cached.
+   *
+   * The returned instance is cached or transient depending on whether the
+   * class is retrieved via {@link Box.get} or {@link Box.new}.
    *
    * @example
    * ```ts

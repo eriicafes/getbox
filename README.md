@@ -171,12 +171,14 @@ console.log(config.timeout); // 5000
 
 ## Constructing classes with dependencies
 
-Use `box.for()` for a convenient way to create instances of classes that take other constructors as dependencies. The instance created with `box.for()` is not cached, but dependencies resolved with `.get()` are cached.
+Use `box.for()` inside a class's `static init` method for a convenient way to create instances of classes that take other constructors as dependencies. The instance returned by the builder is never cached itself, but can be cached when the class is retrieved via `box.get()` or kept transient via `box.new()`.
 
 ```ts
 // database.ts
 export class Database {
-  connect() { /* ... */ }
+  connect() {
+    /* ... */
+  }
 }
 
 // logger.ts
@@ -198,10 +200,7 @@ import { Database } from "./database";
 import { Logger, LoggerFactory } from "./logger";
 
 export class UserService {
-  constructor(
-    private db: Database,
-    private logger: Logger
-  ) {}
+  constructor(private db: Database, private logger: Logger) {}
 
   static init(box: Box) {
     // Create new instance with cached dependencies
@@ -213,17 +212,6 @@ export class UserService {
     // Use db to save user
   }
 }
-```
-
-```ts
-// main.ts
-import { Box } from "getbox";
-import { UserService } from "./service";
-
-const box = new Box();
-
-const service = box.get(UserService);
-service.createUser("Alice");
 ```
 
 ## Mocking
@@ -245,7 +233,8 @@ class MockLogger implements Logger {
 }
 
 const box = new Box();
-Box.mock(box, LoggerFactory, new MockLogger());
+const mockLogger = new MockLogger();
+Box.mock(box, LoggerFactory, mockLogger);
 
 const service = box.get(UserService);
 service.createUser("Alice");

@@ -188,7 +188,7 @@ class BoxAll {
 }
 
 /** Builder for creating class instances with constructor dependencies resolved from a {@link Box}. */
-class Construct<T extends ClassConstructor<any>> {
+export class Construct<T extends ClassConstructor<any>> {
   constructor(private box: Box, private construct: T) {}
 
   /**

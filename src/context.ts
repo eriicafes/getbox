@@ -56,8 +56,6 @@ export function resolveAll(
  * Returns a builder for creating a class instance with resolved constructor
  * parameters from the current {@link withBox} scope. Shorthand for `useBox().for(constructor)`.
  */
-export function construct<T extends new (...args: any) => any>(
-  constructor: T,
-) {
+export function construct<T extends new (...args: any) => any>(constructor: T) {
   return useBox().for(constructor);
 }

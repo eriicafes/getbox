@@ -22,8 +22,6 @@ Classes are instantiated once and cached. Subsequent calls return the cached ins
 
 ```ts
 // printer.ts
-import { Box } from "getbox";
-
 export class Printer {
   print(text: string): string {
     return text.toUpperCase();
@@ -77,29 +75,21 @@ console.log(office.printer === printer); // true
 Use `box.new()` to create a new instance each time without caching. This is useful for instances that should not be shared.
 
 ```ts
-// printer.ts
-import { Box } from "getbox";
-
-export class Printer {
-  id = Math.random();
-
-  print(text: string): string {
-    return text.toUpperCase();
-  }
-}
-```
-
-```ts
 // main.ts
 import { Box } from "getbox";
-import { Printer } from "./printer";
+
+class Database {
+  connect() {
+    /* ... */
+  }
+}
 
 const box = new Box();
 
-const printer1 = box.new(Printer);
-const printer2 = box.new(Printer);
+const db1 = box.new(Database);
+const db2 = box.new(Database);
 
-console.log(printer1 === printer2); // false
+console.log(db1 === db2); // false
 ```
 
 ## Factory functions
@@ -169,37 +159,42 @@ console.log(port); // 3000
 console.log(config.timeout); // 5000
 ```
 
-## Constructing classes with dependencies
+## Resolving multiple constructors
 
-Use `box.for()` inside a class's `static init` method for a convenient way to create instances of classes that take other constructors as dependencies. The instance returned by the builder is never cached itself, but can be cached when the class is retrieved via `box.get()` or kept transient via `box.new()`.
+Use `box.all.get()` to resolve multiple constructors at once. Pass an object to get an object of instances, or an array to get an array of instances.
 
 ```ts
-// database.ts
-export class Database {
-  connect() {
-    /* ... */
-  }
-}
+import { Box } from "getbox";
 
-// logger.ts
-import { Box, factory } from "getbox";
+const box = new Box();
 
-export interface Logger {
-  log(message: string): void;
-}
+// Object form
+const { db, logger } = box.all.get({ db: Database, logger: LoggerFactory });
 
-export const LoggerFactory = factory((box: Box): Logger => {
-  return console;
-});
+// Array form
+const [db2, logger2] = box.all.get([Database, LoggerFactory]);
+
+console.log(db === db2); // true (cached)
+console.log(logger === logger2); // true (cached)
 ```
 
-```ts
-// service.ts
-import { Box } from "getbox";
-import { Database } from "./database";
-import { Logger, LoggerFactory } from "./logger";
+Use `box.all.new()` to resolve multiple constructors as transient instances.
 
-export class UserService {
+```ts
+const { db } = box.all.new({ db: Database });
+const [db2] = box.all.new([Database]);
+
+console.log(db === db2); // false (transient)
+```
+
+## Class constructors
+
+Use `box.for()` inside a class's `static init` method to resolve constructor dependencies automatically. The instance returned by the builder is cached or transient depending on whether the class is retrieved via `box.get()` or `box.new()`.
+
+```ts
+import { Box, factory } from "getbox";
+
+class UserService {
   constructor(private db: Database, private logger: Logger) {}
 
   static init(box: Box) {
@@ -209,9 +204,12 @@ export class UserService {
 
   createUser(name: string) {
     this.logger.log(`Creating user: ${name}`);
-    // Use db to save user
   }
 }
+
+const box = new Box();
+const service = box.get(UserService);
+service.createUser("Alice");
 ```
 
 ## Mocking

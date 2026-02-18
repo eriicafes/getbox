@@ -93,6 +93,9 @@ export class Box {
     return value;
   }
 
+  /** Resolves multiple {@link Constructor}s at once. */
+  public readonly all = new BoxAll(this);
+
   /**
    * Returns a {@link Construct} builder for creating class instances whose
    * constructor parameters are themselves resolved from constructors.
@@ -115,6 +118,57 @@ export class Box {
     value: V,
   ) {
     box.cache.set(constructor, value);
+  }
+}
+
+/** Resolves multiple {@link Constructor}s at once from a {@link Box}. */
+class BoxAll {
+  constructor(private box: Box) {}
+
+  /**
+   * Resolves each constructor as a cached instance via {@link Box.get}.
+   * Accepts an array or object of constructors and returns instances in the same shape.
+   */
+  get<const T extends Constructor<any>[]>(
+    constructors: T,
+  ): { [K in keyof T]: ConstructorInstanceType<T[K]> };
+  get<T extends Record<string, Constructor<any>>>(
+    constructors: T,
+  ): { [K in keyof T]: ConstructorInstanceType<T[K]> };
+  get(
+    constructors: Constructor<any>[] | Record<string, Constructor<any>>,
+  ): any {
+    if (Array.isArray(constructors)) {
+      return constructors.map((c) => this.box.get(c));
+    }
+    const result: Record<string, any> = {};
+    for (const [key, constructor] of Object.entries(constructors)) {
+      result[key] = this.box.get(constructor);
+    }
+    return result;
+  }
+
+  /**
+   * Resolves each constructor as a new transient instance via {@link Box.new}.
+   * Accepts an array or object of constructors and returns instances in the same shape.
+   */
+  new<const T extends Constructor<any>[]>(
+    constructors: T,
+  ): { [K in keyof T]: ConstructorInstanceType<T[K]> };
+  new<T extends Record<string, Constructor<any>>>(
+    constructors: T,
+  ): { [K in keyof T]: ConstructorInstanceType<T[K]> };
+  new(
+    constructors: Constructor<any>[] | Record<string, Constructor<any>>,
+  ): any {
+    if (Array.isArray(constructors)) {
+      return constructors.map((c) => this.box.new(c));
+    }
+    const result: Record<string, any> = {};
+    for (const [key, constructor] of Object.entries(constructors)) {
+      result[key] = this.box.new(constructor);
+    }
+    return result;
   }
 }
 

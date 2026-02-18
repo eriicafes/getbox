@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { Box, factory, constant, ConstructorInstanceType } from "../src";
+import { describe, expect, it } from "vitest";
+import { Box, constant, ConstructorInstanceType, factory } from "../src";
 
 describe("Box", () => {
   describe("new", () => {
@@ -339,6 +339,128 @@ describe("Box", () => {
     });
   });
 
+  describe("all", () => {
+    describe("get", () => {
+      it("should resolve an array of constructors as cached instances", () => {
+        const box = new Box();
+
+        class ServiceA {
+          name = "A";
+        }
+
+        class ServiceB {
+          name = "B";
+        }
+
+        const [a, b] = box.all.get([ServiceA, ServiceB]);
+
+        expect(a).toBeInstanceOf(ServiceA);
+        expect(b).toBeInstanceOf(ServiceB);
+        expect(a.name).toBe("A");
+        expect(b.name).toBe("B");
+        expect(a).toBe(box.get(ServiceA));
+        expect(b).toBe(box.get(ServiceB));
+      });
+
+      it("should resolve an object of constructors as cached instances", () => {
+        const box = new Box();
+
+        class ServiceA {
+          name = "A";
+        }
+
+        class ServiceB {
+          name = "B";
+        }
+
+        const { a, b } = box.all.get({ a: ServiceA, b: ServiceB });
+
+        expect(a).toBeInstanceOf(ServiceA);
+        expect(b).toBeInstanceOf(ServiceB);
+        expect(a.name).toBe("A");
+        expect(b.name).toBe("B");
+        expect(a).toBe(box.get(ServiceA));
+        expect(b).toBe(box.get(ServiceB));
+      });
+
+      it("should work with factory and constant constructors", () => {
+        const box = new Box();
+
+        const ConfigFactory = factory((box: Box) => ({
+          port: 3000,
+        }));
+
+        const ApiUrl = constant("https://api.example.com");
+
+        class Database {
+          name = "db";
+        }
+
+        const [config, url, db] = box.all.get([
+          ConfigFactory,
+          ApiUrl,
+          Database,
+        ]);
+
+        expect(config.port).toBe(3000);
+        expect(url).toBe("https://api.example.com");
+        expect(db).toBeInstanceOf(Database);
+        expect(config).toBe(box.get(ConfigFactory));
+        expect(url).toBe(box.get(ApiUrl));
+        expect(db).toBe(box.get(Database));
+      });
+    });
+
+    describe("new", () => {
+      it("should resolve an array of constructors as transient instances", () => {
+        const box = new Box();
+
+        class ServiceA {
+          id = Math.random();
+        }
+
+        class ServiceB {
+          id = Math.random();
+        }
+
+        const [a1, b1] = box.all.new([ServiceA, ServiceB]);
+        const [a2, b2] = box.all.new([ServiceA, ServiceB]);
+
+        expect(a1).toBeInstanceOf(ServiceA);
+        expect(b1).toBeInstanceOf(ServiceB);
+        expect(a1).not.toBe(a2);
+        expect(b1).not.toBe(b2);
+      });
+
+      it("should resolve an object of constructors as transient instances", () => {
+        const box = new Box();
+
+        class ServiceA {
+          id = Math.random();
+        }
+
+        const result1 = box.all.new({ a: ServiceA });
+        const result2 = box.all.new({ a: ServiceA });
+
+        expect(result1.a).toBeInstanceOf(ServiceA);
+        expect(result1.a).not.toBe(result2.a);
+      });
+
+      it("should not affect the box cache", () => {
+        const box = new Box();
+
+        class ServiceA {
+          id = Math.random();
+        }
+
+        const [transient] = box.all.new([ServiceA]);
+        const cached = box.get(ServiceA);
+
+        expect(transient).not.toBe(cached);
+      });
+    });
+  });
+
   describe("for", () => {
     it("should create an instance with dependencies from box using get", () => {
       const box = new Box();
@@ -451,7 +573,7 @@ describe("Box", () => {
         constructor(
           public db: Database,
           public config: { port: number },
-          public cache: Cache
+          public cache: Cache,
         ) {}
       }
 
@@ -697,14 +819,14 @@ describe("Box", () => {
         constructor(
           public serviceA: ServiceA,
           public serviceB: ServiceB,
-          public config: SharedConfig
+          public config: SharedConfig,
         ) {}
 
         static init(box: Box) {
           return new App(
             box.get(ServiceA),
             box.get(ServiceB),
-            box.get(SharedConfig)
+            box.get(SharedConfig),
           );
         }
       }
@@ -730,7 +852,7 @@ describe("Box", () => {
       class MixedService {
         constructor(
           public classDep: ClassDep,
-          public factoryDep: ConstructorInstanceType<typeof FactoryDep>
+          public factoryDep: ConstructorInstanceType<typeof FactoryDep>,
         ) {}
 
         static init(box: Box) {

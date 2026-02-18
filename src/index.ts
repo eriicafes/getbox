@@ -27,8 +27,11 @@ export function factory<T>(init: (box: Box) => T): Constructor<T> {
   return { init };
 }
 
+const constantSymbol = Symbol("Box constant");
+
 /**
  * Creates a {@link Constructor} that always resolves to the given constant value.
+ * Constant values are never cached since they are already fixed.
  *
  * @example
  * ```ts
@@ -37,7 +40,8 @@ export function factory<T>(init: (box: Box) => T): Constructor<T> {
  * ```
  */
 export function constant<const T>(value: T): Constructor<T> {
-  return { init: () => value };
+  const constructor = { init: () => value, [constantSymbol]: true };
+  return constructor;
 }
 
 /**
@@ -89,16 +93,18 @@ export class Box {
     if (this.cache.has(constructor)) return this.cache.get(constructor);
 
     const value = this.new(constructor);
-    this.cache.set(constructor, value);
+    const skipCache =
+      constantSymbol in constructor && constructor[constantSymbol];
+    if (!skipCache) this.cache.set(constructor, value);
     return value;
   }
 
-  /** Resolves multiple {@link Constructor}s at once. */
+  /** Resolves multiple constructors at once. */
   public readonly all = new BoxAll(this);
 
   /**
-   * Returns a {@link Construct} builder for creating class instances whose
-   * constructor parameters are themselves resolved from constructors.
+   * Returns a {@link Construct} builder for creating class instances by
+   * resolving constructors for each constructor parameter.
    *
    * Intended to be used inside a class's `static init` method. The instance
    * returned by the builder is never cached itself, but can be cached when
@@ -119,9 +125,18 @@ export class Box {
   ) {
     box.cache.set(constructor, value);
   }
+
+  /**
+   * Removes the instance from the box's cache for a given constructor.
+   * Removes all instances if no constructor is provided.
+   */
+  public static clear<T>(box: Box, constructor?: Constructor<T>) {
+    if (!constructor) return box.cache.clear();
+    box.cache.delete(constructor);
+  }
 }
 
-/** Resolves multiple {@link Constructor}s at once from a {@link Box}. */
+/** Resolves multiple constructors at once from a {@link Box}. */
 class BoxAll {
   constructor(private box: Box) {}
 

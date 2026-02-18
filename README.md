@@ -2,9 +2,9 @@
 
 ### Lightweight dependency injection for TypeScript.
 
-`getbox` provides a simple way of managing dependencies in TypeScript applications. It uses classes and factory functions to define dependencies and automatically handles instance caching.
+`getbox` provides a simple way of managing dependencies in TypeScript applications. Dependencies are defined as constructors that act as interfaces for the values they resolve.
 
-The main advantage of `getbox` is removing the need to manually pass references around when instantiating classes that depend on one another.
+Callers know the type of the value they need, but not how it will be derived. The box resolves constructors lazily and caches instances automatically.
 
 ## Installation
 
@@ -136,7 +136,7 @@ export class UserService {
 
 ## Constants
 
-Use the `constant` helper to register constant values without needing a factory or class.
+Use the `constant` helper to register constant values without needing a factory or class. Constant values are never cached since they are already fixed.
 
 ```ts
 import { Box, constant } from "getbox";
@@ -144,7 +144,7 @@ import { Box, constant } from "getbox";
 const ApiUrl = constant("https://api.example.com");
 const Port = constant(3000);
 const Config = constant({
-  apiUrl: "https://api.example.com",
+  baseUrl: "https://example.com",
   timeout: 5000,
 });
 
@@ -157,6 +157,17 @@ const config = box.get(Config);
 console.log(apiUrl); // "https://api.example.com"
 console.log(port); // 3000
 console.log(config.timeout); // 5000
+```
+
+Since constructors act as interfaces, a `constant` can later be replaced with a `factory` without changing any callers.
+
+```ts
+const ApiUrl = factory((box: Box) => {
+  const config = box.get(Config);
+  return `${config.baseUrl}/api`;
+});
+
+const apiUrl = box.get(ApiUrl); // "https://example.com/api"
 ```
 
 ## Resolving multiple constructors
@@ -238,6 +249,23 @@ const service = box.get(UserService);
 service.createUser("Alice");
 
 console.log(mockLogger.messages); // ["Creating user: Alice"]
+```
+
+## Clearing the cache
+
+Use `Box.clear` to remove cached instances. Pass a specific constructor to clear a single entry, or omit it to clear all cached instances.
+
+```ts
+const box = new Box();
+
+const db = box.get(Database);
+
+// Clear a specific constructor
+Box.clear(box, Database);
+console.log(box.get(Database) === db); // false (new instance)
+
+// Clear all cached instances
+Box.clear(box);
 ```
 
 ## Circular dependencies

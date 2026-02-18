@@ -281,7 +281,7 @@ describe("Box", () => {
       expect(instance.timeout).toBe(3000);
     });
 
-    it("should cache constant values", () => {
+    it("should return the same value without caching", () => {
       const box = new Box();
 
       const value = { id: Math.random() };
@@ -748,6 +748,50 @@ describe("Box", () => {
       expect(constructorCalled).toBe(false);
       expect(instance).toBe(mockInstance);
       expect(instance.value).toBe("mocked");
+    });
+  });
+
+  describe("clear", () => {
+    it("should clear a specific constructor from the cache", () => {
+      const box = new Box();
+
+      class ServiceA {
+        id = Math.random();
+      }
+
+      class ServiceB {
+        id = Math.random();
+      }
+
+      const a1 = box.get(ServiceA);
+      const b1 = box.get(ServiceB);
+      Box.clear(box, ServiceA);
+      const a2 = box.get(ServiceA);
+      const b2 = box.get(ServiceB);
+
+      expect(a1).not.toBe(a2);
+      expect(b1).toBe(b2);
+    });
+
+    it("should clear all constructors from the cache", () => {
+      const box = new Box();
+
+      class ServiceA {
+        id = Math.random();
+      }
+
+      class ServiceB {
+        id = Math.random();
+      }
+
+      const a1 = box.get(ServiceA);
+      const b1 = box.get(ServiceB);
+      Box.clear(box);
+      const a2 = box.get(ServiceA);
+      const b2 = box.get(ServiceB);
+
+      expect(a1).not.toBe(a2);
+      expect(b1).not.toBe(b2);
     });
   });
 

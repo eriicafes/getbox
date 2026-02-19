@@ -1,5 +1,11 @@
 # getbox
 
+## 1.2.0
+
+### Minor Changes
+
+- 5812b60: Add `transient` constructors that skips caching
+
 ## 1.1.0
 
 ### Minor Changes

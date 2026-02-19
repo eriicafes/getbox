@@ -27,7 +27,25 @@ export function factory<T>(init: (box: Box) => T): Constructor<T> {
   return { init };
 }
 
-const constantSymbol = Symbol("Box constant");
+const noCacheSymbol = Symbol("Box constant");
+
+/**
+ * Creates a {@link Constructor} from a factory function whose result is never cached.
+ * The factory is called on every resolution, always returning a fresh value
+ * even when retrieved via {@link Box.get}.
+ *
+ * @example
+ * ```ts
+ * const RequestId = transient(() => crypto.randomUUID());
+ * const id1 = box.get(RequestId);
+ * const id2 = box.get(RequestId);
+ * console.log(id1 === id2); // false
+ * ```
+ */
+export function transient<T>(init: (box: Box) => T): Constructor<T> {
+  const constructor = { init, [noCacheSymbol]: true };
+  return constructor;
+}
 
 /**
  * Creates a {@link Constructor} that always resolves to the given constant value.
@@ -40,7 +58,7 @@ const constantSymbol = Symbol("Box constant");
  * ```
  */
 export function constant<const T>(value: T): Constructor<T> {
-  const constructor = { init: () => value, [constantSymbol]: true };
+  const constructor = { init: () => value, [noCacheSymbol]: true };
   return constructor;
 }
 
@@ -94,7 +112,7 @@ export class Box {
 
     const value = this.new(constructor);
     const skipCache =
-      constantSymbol in constructor && constructor[constantSymbol];
+      noCacheSymbol in constructor && constructor[noCacheSymbol];
     if (!skipCache) this.cache.set(constructor, value);
     return value;
   }

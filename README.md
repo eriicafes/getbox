@@ -172,6 +172,23 @@ const ApiUrl = factory((box: Box) => {
 const apiUrl = box.get(ApiUrl); // "https://example.com/api"
 ```
 
+## Transient factories
+
+Use the `transient` helper to create a factory whose result is never cached. The factory is called on every resolution, even when retrieved via `box.get()`.
+
+```ts
+import { Box, transient } from "getbox";
+
+const RequestId = transient(() => crypto.randomUUID());
+
+const box = new Box();
+
+const id1 = box.get(RequestId);
+const id2 = box.get(RequestId);
+
+console.log(id1 === id2); // false
+```
+
 ## Resolving multiple constructors
 
 Use `box.all.get()` to resolve multiple constructors at once. Pass an object to get an object of instances, or an array to get an array of instances.

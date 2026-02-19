@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { Box, constant, ConstructorInstanceType, factory } from "../src";
+import {
+  Box,
+  constant,
+  ConstructorInstanceType,
+  factory,
+  transient,
+} from "../src";
 
 describe("Box", () => {
   describe("new", () => {
@@ -336,6 +342,42 @@ describe("Box", () => {
       const db = box.for(Database).get(DatabaseUrl);
 
       expect(db.url).toBe("postgres://localhost:5432/mydb");
+    });
+  });
+
+  describe("transient", () => {
+    it("should create a new value on every resolution", () => {
+      const box = new Box();
+
+      const RandomValue = transient(() => Math.random());
+
+      const value1 = box.get(RandomValue);
+      const value2 = box.get(RandomValue);
+
+      expect(value1).not.toBe(value2);
+    });
+
+    it("should create a new value with box.new()", () => {
+      const box = new Box();
+
+      const RandomValue = transient(() => Math.random());
+
+      const value1 = box.new(RandomValue);
+      const value2 = box.new(RandomValue);
+
+      expect(value1).not.toBe(value2);
+    });
+
+    it("should receive the box as an argument", () => {
+      const box = new Box();
+
+      class Database {
+        url = "postgres://localhost";
+      }
+
+      const DbUrl = transient((box) => box.get(Database).url);
+
+      expect(box.get(DbUrl)).toBe("postgres://localhost");
     });
   });
 

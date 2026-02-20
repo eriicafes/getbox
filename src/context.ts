@@ -32,7 +32,9 @@ export function useBox(): Box {
  * Resolves a cached instance from the current {@link withBox} scope.
  * Shorthand for `useBox().get(constructor)`.
  */
-export function resolve<T>(constructor: Constructor<T>): T {
+export function resolve<T extends Constructor<any>>(
+  constructor: T,
+): ConstructorInstanceType<T> {
   return useBox().get(constructor);
 }
 

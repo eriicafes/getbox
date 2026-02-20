@@ -57,9 +57,7 @@ import { Box } from "getbox";
 class UserService {
   constructor(private db: Database, private logger: Logger) {}
 
-  static init(box: Box) {
-    return box.for(UserService).get(Database, LoggerFactory);
-  }
+  static init = Box.init(UserService).get(Database, LoggerFactory);
 }
 ```
 

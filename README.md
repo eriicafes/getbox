@@ -43,10 +43,7 @@ import { Printer } from "./printer";
 export class Office {
   constructor(public printer: Printer) {}
 
-  static init(box: Box) {
-    const printer = box.get(Printer);
-    return new Office(printer);
-  }
+  static init = Box.init(Office).get(Printer);
 }
 ```
 
@@ -125,10 +122,7 @@ import { Logger, LoggerFactory } from "./logger";
 export class UserService {
   constructor(private logger: Logger) {}
 
-  static init(box: Box) {
-    const logger = box.get(LoggerFactory);
-    return new UserService(logger);
-  }
+  static init = Box.init(UserService).get(LoggerFactory);
 
   createUser(name: string) {
     this.logger.log(`Creating user: ${name}`);
@@ -219,18 +213,15 @@ console.log(db === db2); // false (transient)
 
 ## Class constructors
 
-Use `box.for()` inside a class's `static init` method to resolve constructor dependencies automatically. The instance returned by the builder is cached or transient depending on whether the class is retrieved via `box.get()` or `box.new()`.
+Use `Box.init` to allow resolving classes that have constructor parameters.
 
 ```ts
-import { Box, factory } from "getbox";
+import { Box } from "getbox";
 
 class UserService {
   constructor(private db: Database, private logger: Logger) {}
 
-  static init(box: Box) {
-    // Create new instance with cached dependencies
-    return box.for(UserService).get(Database, LoggerFactory);
-  }
+  static init = Box.init(UserService).get(Database, LoggerFactory);
 
   createUser(name: string) {
     this.logger.log(`Creating user: ${name}`);
@@ -241,6 +232,34 @@ const box = new Box();
 const service = box.get(UserService);
 service.createUser("Alice");
 ```
+
+`Box.init` is shorthand for writing the `static init` method yourself.
+
+```ts
+class UserService {
+  constructor(private db: Database, private logger: Logger) {}
+
+  static init(box: Box) {
+    return new UserService(box.get(Database), box.get(LoggerFactory));
+  }
+}
+```
+
+Use `box.for()` when you need custom logic alongside dependency resolution.
+
+```ts
+class UserService {
+  constructor(private db: Database, private logger: Logger) {}
+
+  static init(box: Box) {
+    const logger = box.get(LoggerFactory);
+    logger.log("Initializing UserService");
+    return box.for(UserService).get(Database, LoggerFactory);
+  }
+}
+```
+
+Classes with no constructor parameters are resolved automatically without needing `static init`. If `static init` is defined, it takes priority over the default constructor.
 
 ## Mocking
 

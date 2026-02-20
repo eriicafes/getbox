@@ -6,7 +6,9 @@
 export type Constructor<T> = { init(box: Box): T } | { new (): T };
 
 /** Extracts the instance type from a {@link Constructor}. */
-export type ConstructorInstanceType<T> = T extends Constructor<infer U>
+export type ConstructorInstanceType<T> = T extends { init(box: Box): infer U }
+  ? U
+  : T extends { new (): infer U }
   ? U
   : never;
 
@@ -27,7 +29,7 @@ export function factory<T>(init: (box: Box) => T): Constructor<T> {
   return { init };
 }
 
-const noCacheSymbol = Symbol("Box constant");
+const noCacheSymbol = Symbol("Box.noCache");
 
 /**
  * Creates a {@link Constructor} from a factory function whose result is never cached.
@@ -99,7 +101,9 @@ export class Box {
    * Creates a new (transient) instance without caching. Useful for instances
    * that should not be shared.
    */
-  public new<T>(constructor: Constructor<T>): T {
+  public new<T extends Constructor<any>>(
+    constructor: T,
+  ): ConstructorInstanceType<T> {
     return "init" in constructor ? constructor.init(this) : new constructor();
   }
 
@@ -107,7 +111,9 @@ export class Box {
    * Resolves an instance from the cache, or creates and caches a new one.
    * Subsequent calls with the same constructor return the cached instance.
    */
-  public get<T>(constructor: Constructor<T>): T {
+  public get<T extends Constructor<any>>(
+    constructor: T,
+  ): ConstructorInstanceType<T> {
     if (this.cache.has(constructor)) return this.cache.get(constructor);
 
     const value = this.new(constructor);
@@ -130,6 +136,22 @@ export class Box {
    */
   public for<T extends ClassConstructor<any>>(constructor: T) {
     return new Construct(this, constructor);
+  }
+
+  /**
+   * Returns a {@link StaticConstruct} builder for defining a `static init` method.
+   * The result can be assigned directly to `static init`.
+   *
+   * @example
+   * ```ts
+   * class UserService {
+   *   constructor(private db: Database, private logger: Logger) {}
+   *   static init = Box.init(UserService).get(Database, LoggerFactory);
+   * }
+   * ```
+   */
+  public static init<T extends ClassConstructor<any>>(constructor: T) {
+    return new StaticConstruct(constructor);
   }
 
   /**
@@ -251,6 +273,60 @@ export class Construct<T extends ClassConstructor<any>> {
   public get(...args: ClassConstructorArgs<T>): InstanceType<T> {
     const instances = args.map((arg) => this.box.get(arg));
     return new this.construct(...instances);
+  }
+}
+
+/**
+ * Builder for creating a `static init` function with constructor dependencies
+ * resolved from a {@link Box}.
+ */
+export class StaticConstruct<T extends ClassConstructor<any>> {
+  constructor(private construct: T) {}
+
+  /**
+   * Resolves each dependency as a new transient instance via {@link Box.new},
+   * meaning dependencies are not cached or shared.
+   * Returns a function compatible with `static init` that can be assigned directly.
+   *
+   * The returned instance is cached or transient depending on whether the
+   * class is retrieved via {@link Box.get} or {@link Box.new}.
+   *
+   * @example
+   * ```ts
+   * class UserService {
+   *   constructor(private db: Database, private logger: Logger) {}
+   *   static init = Box.init(UserService).get(Database, LoggerFactory);
+   * }
+   * ```
+   */
+  public new(...args: ClassConstructorArgs<T>): (box: Box) => InstanceType<T> {
+    return (box) => {
+      const instances = args.map((arg) => box.new(arg));
+      return new this.construct(...instances);
+    };
+  }
+
+  /**
+   * Resolves each dependency as a cached instance via {@link Box.get},
+   * meaning dependencies are shared across the box.
+   * Returns a function compatible with `static init` that can be assigned directly.
+   *
+   * The returned instance is cached or transient depending on whether the
+   * class is retrieved via {@link Box.get} or {@link Box.new}.
+   *
+   * @example
+   * ```ts
+   * class UserService {
+   *   constructor(private db: Database, private logger: Logger) {}
+   *   static init = Box.init(UserService).get(Database, LoggerFactory);
+   * }
+   * ```
+   */
+  public get(...args: ClassConstructorArgs<T>): (box: Box) => InstanceType<T> {
+    return (box) => {
+      const instances = args.map((arg) => box.get(arg));
+      return new this.construct(...instances);
+    };
   }
 }
 

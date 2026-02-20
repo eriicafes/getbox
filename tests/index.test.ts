@@ -25,22 +25,6 @@ describe("Box", () => {
       expect(instance1.value).not.toBe(instance2.value);
     });
 
-    it("should use static init method if present", () => {
-      const box = new Box();
-
-      class TestClass {
-        constructor(public value: string) {}
-
-        static init(box: Box) {
-          return new TestClass("from init");
-        }
-      }
-
-      const instance = box.new(TestClass);
-
-      expect(instance.value).toBe("from init");
-    });
-
     it("should create new instances with factory constructors", () => {
       const box = new Box();
 
@@ -135,22 +119,6 @@ describe("Box", () => {
       expect(instance1.value).toBe(instance2.value);
     });
 
-    it("should use static init method if present", () => {
-      const box = new Box();
-
-      class TestClass {
-        constructor(public value: string) {}
-
-        static init(box: Box) {
-          return new TestClass("from init");
-        }
-      }
-
-      const instance = box.get(TestClass);
-
-      expect(instance.value).toBe("from init");
-    });
-
     it("should resolve dependencies using box in static init", () => {
       const box = new Box();
 
@@ -199,6 +167,143 @@ describe("Box", () => {
       const instanceB = box.get(ClassB);
 
       expect(instanceA.dep).toBe(instanceB.dep);
+    });
+  });
+
+  describe("init", () => {
+    it("should create a static init function with cached dependencies", () => {
+      const box = new Box();
+
+      class Database {
+        name = "db";
+      }
+
+      class UserService {
+        constructor(public db: Database) {}
+        static init = Box.init(UserService).get(Database);
+      }
+
+      const service = box.get(UserService);
+      const db = box.get(Database);
+
+      expect(service).toBeInstanceOf(UserService);
+      expect(service.db).toBeInstanceOf(Database);
+      expect(service.db).toBe(db);
+    });
+
+    it("should create a static init function with transient dependencies", () => {
+      const box = new Box();
+
+      class Dependency {
+        id = Math.random();
+      }
+
+      class UserService {
+        constructor(public dep: Dependency) {}
+        static init = Box.init(UserService).new(Dependency);
+      }
+
+      const service1 = box.new(UserService);
+      const service2 = box.new(UserService);
+
+      expect(service1.dep).not.toBe(service2.dep);
+    });
+
+    it("should work with zero constructor parameters", () => {
+      const box = new Box();
+
+      class Logger {
+        log(msg: string) {
+          return msg;
+        }
+        static init = Box.init(Logger).get();
+      }
+
+      const logger = box.get(Logger);
+
+      expect(logger).toBeInstanceOf(Logger);
+      expect(logger.log("hello")).toBe("hello");
+    });
+
+    it("should cache the instance when retrieved via box.get()", () => {
+      const box = new Box();
+
+      class Database {}
+
+      class UserService {
+        constructor(public db: Database) {}
+        static init = Box.init(UserService).get(Database);
+      }
+
+      const service1 = box.get(UserService);
+      const service2 = box.get(UserService);
+
+      expect(service1).toBe(service2);
+    });
+
+    it("should create a new instance when retrieved via box.new()", () => {
+      const box = new Box();
+
+      class Database {}
+
+      class UserService {
+        constructor(public db: Database) {}
+        static init = Box.init(UserService).get(Database);
+      }
+
+      const service1 = box.new(UserService);
+      const service2 = box.new(UserService);
+
+      expect(service1).not.toBe(service2);
+      expect(service1.db).toBe(service2.db);
+    });
+
+    it("should override a no-argument constructor returning a different instance", () => {
+      const box = new Box();
+
+      class Database {
+        name = "db";
+      }
+
+      class UserService {
+        constructor() {}
+
+        static init(box: Box) {
+          return box.get(Database);
+        }
+      }
+
+      const result = box.get(UserService);
+
+      expect(result).toBeInstanceOf(Database);
+      expect(result.name).toBe("db");
+    });
+
+    it("should behave identically to static init method", () => {
+      const box = new Box();
+
+      class Database {
+        id = Math.random();
+      }
+
+      class UserServiceConcise {
+        constructor(public db: Database) {}
+        static init = Box.init(UserServiceConcise).get(Database);
+      }
+
+      class UserServiceVerbose {
+        constructor(public db: Database) {}
+        static init(box: Box) {
+          return new UserServiceVerbose(box.get(Database));
+        }
+      }
+
+      const concise = box.get(UserServiceConcise);
+      const verbose = box.get(UserServiceVerbose);
+
+      expect(concise).toBeInstanceOf(UserServiceConcise);
+      expect(verbose).toBeInstanceOf(UserServiceVerbose);
+      expect(concise.db).toBe(verbose.db);
     });
   });
 

@@ -6,8 +6,6 @@
 
 Callers know the type of the value they need, but not how it will be derived. The box resolves constructors lazily and caches instances automatically.
 
-For an alternative pattern using AsyncLocalStorage where classes can resolve dependencies directly in their constructors, see [getbox/context](./CONTEXT.md).
-
 ## Installation
 
 ```sh
@@ -16,7 +14,9 @@ npm install getbox
 
 ## Usage
 
-`getbox` has a very small API surface. You typically only need to use the `Box.get()` and optionally static init methods or the `factory` helper.
+`getbox` has a very small API surface. You typically only need `box.get()` and optionally `static init` or the `factory` helper.
+
+For an alternative pattern using AsyncLocalStorage where classes can resolve dependencies directly in their constructors, see [getbox/context](./CONTEXT.md).
 
 ### Create a class
 
@@ -33,11 +33,11 @@ export class Printer {
 
 ### Use in another class
 
-Retrieve instances by calling `box.get(Constructor)` within your class constructor or factory function.
+The `static init` property tells the box what dependencies to pass when instantiating the class.
 
 ```ts
 // office.ts
-import { Box, factory } from "getbox";
+import { Box } from "getbox";
 import { Printer } from "./printer";
 
 export class Office {
@@ -103,14 +103,12 @@ export interface Logger {
   log(message: string): void;
 }
 
-export class ConsoleLogger implements Logger {
-  log(message: string): void {
-    console.log(`[LOG] ${message}`);
-  }
-}
-
 const LoggerFactory = factory((box: Box): Logger => {
-  return new ConsoleLogger();
+  return {
+    log(message: string): void {
+      console.log(`[LOG] ${message}`);
+    },
+  };
 });
 ```
 

@@ -1,5 +1,11 @@
 # getbox
 
+## 1.3.0
+
+### Minor Changes
+
+- 637d703: Add `Box.init` helper for defining class static init methods
+
 ## 1.2.0
 
 ### Minor Changes

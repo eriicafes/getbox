@@ -2,9 +2,9 @@
 
 ### Lightweight dependency injection for TypeScript.
 
-`getbox` provides a simple way of managing dependencies in TypeScript applications. Dependencies are defined as constructors that act as interfaces for the values they resolve.
+`getbox` is a lightweight inversion of control container for TypeScript. Constructors declare their own dependencies, keeping instantiation logic colocated with the type that owns it.
 
-Callers know the type of the value they need, but not how it will be derived. The box resolves constructors lazily and caches instances automatically.
+Callers depend on types, not implementations. The box resolves and caches instances automatically on first use.
 
 ## Installation
 
@@ -16,202 +16,44 @@ npm install getbox
 
 `getbox` has a very small API surface. You typically only need `box.get()` and optionally `static init` or the `factory` helper.
 
-For an alternative pattern using AsyncLocalStorage where classes can resolve dependencies directly in their constructors, see [getbox/context](./CONTEXT.md).
+For an alternative pattern using AsyncLocalStorage where classes can resolve dependencies directly, see [getbox/context](./CONTEXT.md).
 
-### Create a class
+### Quick start
 
-Classes are instantiated once and cached. Subsequent calls return the cached instance.
+Create a `Box` instance and call `box.get()` to resolve instances. The box automatically resolves dependencies and caches every instance, so shared dependencies always point to the same reference.
 
 ```ts
-// printer.ts
-export class Printer {
-  print(text: string): string {
+import { Box } from "getbox";
+
+class Printer {
+  print(text: string) {
     return text.toUpperCase();
   }
 }
-```
 
-### Use in another class
-
-The `static init` property tells the box what dependencies to pass when instantiating the class.
-
-```ts
-// office.ts
-import { Box } from "getbox";
-import { Printer } from "./printer";
-
-export class Office {
+class Office {
   constructor(public printer: Printer) {}
 
   static init = Box.init(Office).get(Printer);
 }
-```
-
-### Use in application
-
-Create a Box instance to hold cached instances.
-
-When initializing a class, any dependencies it has will also be cached, ensuring that shared dependencies use the same instance.
-
-```ts
-// main.ts
-import { Box } from "getbox";
-import { Office } from "./office";
-import { Printer } from "./printer";
 
 const box = new Box();
 
 const office = box.get(Office);
 office.printer.print("hello world");
 
-// Instances are cached and shared
+// Dependencies are cached and shared
 const printer = box.get(Printer);
 console.log(office.printer === printer); // true
 ```
 
-## Transient instances
+## Constructors
 
-Use `box.new()` to create a new instance each time without caching. This is useful for instances that should not be shared.
+Constructors define what the box resolves. `getbox` supports classes, factories, derived values, and constants. Because constructors act as interfaces, the underlying implementation can change without affecting any consumer.
 
-```ts
-// main.ts
-import { Box } from "getbox";
+### Classes
 
-class Database {
-  connect() {
-    /* ... */
-  }
-}
-
-const box = new Box();
-
-const db1 = box.new(Database);
-const db2 = box.new(Database);
-
-console.log(db1 === db2); // false
-```
-
-## Factory functions
-
-Use the `factory` helper to create function-based constructors instead of classes. Factories work well with interfaces for better abstraction.
-
-```ts
-// logger.ts
-import { Box, factory } from "getbox";
-
-export interface Logger {
-  log(message: string): void;
-}
-
-const LoggerFactory = factory((box: Box): Logger => {
-  return {
-    log(message: string): void {
-      console.log(`[LOG] ${message}`);
-    },
-  };
-});
-```
-
-```ts
-// service.ts
-import { Box } from "getbox";
-import { Logger, LoggerFactory } from "./logger";
-
-export class UserService {
-  constructor(private logger: Logger) {}
-
-  static init = Box.init(UserService).get(LoggerFactory);
-
-  createUser(name: string) {
-    this.logger.log(`Creating user: ${name}`);
-  }
-}
-```
-
-## Constants
-
-Use the `constant` helper to register constant values without needing a factory or class. Constant values are never cached since they are already fixed.
-
-```ts
-import { Box, constant } from "getbox";
-
-const ApiUrl = constant("https://api.example.com");
-const Port = constant(3000);
-const Config = constant({
-  baseUrl: "https://example.com",
-  timeout: 5000,
-});
-
-const box = new Box();
-
-const apiUrl = box.get(ApiUrl);
-const port = box.get(Port);
-const config = box.get(Config);
-
-console.log(apiUrl); // "https://api.example.com"
-console.log(port); // 3000
-console.log(config.timeout); // 5000
-```
-
-Since constructors act as interfaces, a `constant` can later be replaced with a `factory` without changing any callers.
-
-```ts
-const ApiUrl = factory((box: Box) => {
-  const config = box.get(Config);
-  return `${config.baseUrl}/api`;
-});
-
-const apiUrl = box.get(ApiUrl); // "https://example.com/api"
-```
-
-## Transient factories
-
-Use the `transient` helper to create a factory whose result is never cached. The factory is called on every resolution, even when retrieved via `box.get()`.
-
-```ts
-import { Box, transient } from "getbox";
-
-const RequestId = transient(() => crypto.randomUUID());
-
-const box = new Box();
-
-const id1 = box.get(RequestId);
-const id2 = box.get(RequestId);
-
-console.log(id1 === id2); // false
-```
-
-## Resolving multiple constructors
-
-Use `box.all.get()` to resolve multiple constructors at once. Pass an object to get an object of instances, or an array to get an array of instances.
-
-```ts
-import { Box } from "getbox";
-
-const box = new Box();
-
-// Object form
-const { db, logger } = box.all.get({ db: Database, logger: LoggerFactory });
-
-// Array form
-const [db2, logger2] = box.all.get([Database, LoggerFactory]);
-
-console.log(db === db2); // true (cached)
-console.log(logger === logger2); // true (cached)
-```
-
-Use `box.all.new()` to resolve multiple constructors as transient instances.
-
-```ts
-const { db } = box.all.new({ db: Database });
-const [db2] = box.all.new([Database]);
-
-console.log(db === db2); // false (transient)
-```
-
-## Class constructors
-
-Use `Box.init` to allow resolving classes that have constructor parameters.
+Define a `static init` property to allow the box to resolve classes that have constructor parameters. Classes with no parameters do not require it.
 
 ```ts
 import { Box } from "getbox";
@@ -231,7 +73,7 @@ const service = box.get(UserService);
 service.createUser("Alice");
 ```
 
-`Box.init` is shorthand for writing the `static init` method yourself.
+`Box.init` is shorthand for writing the `static init` property yourself.
 
 ```ts
 class UserService {
@@ -257,11 +99,121 @@ class UserService {
 }
 ```
 
-Classes with no constructor parameters are resolved automatically without needing `static init`. If `static init` is defined, it takes priority over the default constructor.
+If `static init` is defined, it takes priority over the class constructor.
+
+### Factory functions
+
+Use the `factory` helper to create function-based constructors instead of classes. Factories work well with interfaces for better abstraction.
+
+```ts
+import { Box, factory } from "getbox";
+
+interface Logger {
+  log(message: string): void;
+}
+
+const LoggerFactory = factory(
+  (): Logger => ({
+    log(message: string) {
+      console.log(`[LOG] ${message}`);
+    },
+  }),
+);
+
+const box = new Box();
+const logger = box.get(LoggerFactory);
+
+logger.log("hello world");
+```
+
+### Derived values
+
+Use the `derive` helper to compute a value from the box without caching the result.
+
+```ts
+import { Box, derive } from "getbox";
+
+class Config {
+  baseUrl = "https://example.com";
+}
+
+const RequestContext = derive((box) => ({
+  baseUrl: box.get(Config).baseUrl,
+  timestamp: Date.now(),
+}));
+
+const box = new Box();
+
+const ctx1 = box.get(RequestContext);
+const ctx2 = box.get(RequestContext);
+
+console.log(ctx1 === ctx2); // false
+```
+
+### Constants
+
+Use the `constant` helper to wrap a fixed value as a constructor. Constant values are never cached and always return the same stable reference.
+
+```ts
+import { Box, constant } from "getbox";
+
+const ApiUrl = constant("https://api.example.com");
+const Port = constant(3000);
+const Config = constant({
+  baseUrl: "https://example.com",
+  timeout: 5000,
+});
+
+const box = new Box();
+
+console.log(box.get(ApiUrl)); // "https://api.example.com"
+console.log(box.get(Port)); // 3000
+console.log(box.get(Config).timeout); // 5000
+```
+
+## Resolving instances
+
+Use `box.get()` to resolve a cached instance. The box resolves the constructor on first call and returns the same instance on every subsequent call. Use `box.new()` to always get a new instance without caching.
+
+```ts
+import { Box } from "getbox";
+
+class Database {
+  connect() {
+    /* ... */
+  }
+}
+
+const box = new Box();
+
+const db1 = box.get(Database);
+const db2 = box.get(Database);
+console.log(db1 === db2); // true (cached)
+
+const db3 = box.new(Database);
+const db4 = box.new(Database);
+console.log(db3 === db4); // false (never cached)
+```
+
+Use `box.all.get()` or `box.all.new()` to resolve multiple constructors at once. Pass an array to get an array of instances, or an object to get an object of instances.
+
+```ts
+const box = new Box();
+
+// Cached
+const { db, logger } = box.all.get({ db: Database, logger: LoggerFactory });
+const [db2, logger2] = box.all.get([Database, LoggerFactory]);
+
+// New instances
+const { db3 } = box.all.new({ db3: Database });
+const [db4] = box.all.new([Database]);
+```
+
+> `box.get()` does not cache `derive` or `constant` values.
 
 ## Mocking
 
-You can mock dependencies for testing using `Box.mock`. This is particularly useful with factories and interfaces.
+You can mock dependencies for testing using `Box.mock`.
 
 ```ts
 // service.test.ts
@@ -306,7 +258,7 @@ Box.clear(box);
 
 ## Circular dependencies
 
-`getbox` does not prevent circular dependencies. You should structure your code to avoid circular imports between modules.
+`getbox` does not prevent circular dependencies. You should structure your code to avoid them.
 
 ## License
 

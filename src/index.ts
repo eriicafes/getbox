@@ -32,21 +32,34 @@ export function factory<T>(init: (box: Box) => T): Constructor<T> {
 const noCacheSymbol = Symbol("Box.noCache");
 
 /**
- * Creates a {@link Constructor} from a factory function whose result is never cached.
- * The factory is called on every resolution, always returning a fresh value
- * even when retrieved via {@link Box.get}.
+ * Creates a {@link Constructor} that computes a value from the box without caching the result.
  *
  * @example
  * ```ts
- * const RequestId = transient(() => crypto.randomUUID());
- * const id1 = box.get(RequestId);
- * const id2 = box.get(RequestId);
- * console.log(id1 === id2); // false
+ * class Config {
+ *   baseUrl = "https://example.com";
+ * }
+ *
+ * const RequestContext = derive((box) => ({
+ *   baseUrl: box.get(Config).baseUrl,
+ *   timestamp: Date.now(),
+ * }));
+ *
+ * const ctx1 = box.get(RequestContext);
+ * const ctx2 = box.get(RequestContext);
+ * console.log(ctx1 === ctx2); // false
  * ```
  */
-export function transient<T>(init: (box: Box) => T): Constructor<T> {
+export function derive<T>(init: (box: Box) => T): Constructor<T> {
   const constructor = { init, [noCacheSymbol]: true };
   return constructor;
+}
+
+/**
+ * @deprecated Use {@link derive} instead.
+ */
+export function transient<T>(init: (box: Box) => T): Constructor<T> {
+  return derive(init);
 }
 
 /**
@@ -81,9 +94,7 @@ export function constant<const T>(value: T): Constructor<T> {
  *
  * class UserService {
  *   constructor(private db: Database) {}
- *   static init(box: Box) {
- *     return new UserService(box.get(Database));
- *   }
+ *   static init = Box.init(UserService).get(Database);
  * }
  *
  * const box = new Box();
@@ -91,15 +102,13 @@ export function constant<const T>(value: T): Constructor<T> {
  * const db = box.get(Database);
  *
  * console.log(service.db === db); // true (cached)
- * console.log(box.new(Database) === db); // false (transient)
  * ```
  */
 export class Box {
-  private cache = new Map<Constructor<any>, any>();
+  protected cache = new Map<Constructor<any>, any>();
 
   /**
-   * Creates a new (transient) instance without caching. Useful for instances
-   * that should not be shared.
+   * Creates a new instance without caching.
    */
   public new<T extends Constructor<any>>(
     constructor: T,
@@ -132,7 +141,7 @@ export class Box {
    *
    * Intended to be used inside a class's `static init` method. The instance
    * returned by the builder is never cached itself, but can be cached when
-   * the class is retrieved via {@link Box.get} or kept transient via {@link Box.new}.
+   * the class is retrieved via {@link Box.get} or new via {@link Box.new}.
    */
   public for<T extends ClassConstructor<any>>(constructor: T) {
     return new Construct(this, constructor);
@@ -181,6 +190,29 @@ class BoxAll {
   constructor(private box: Box) {}
 
   /**
+   * Resolves each constructor as a new instance via {@link Box.new}.
+   * Accepts an array or object of constructors and returns instances in the same shape.
+   */
+  new<const T extends Constructor<any>[]>(
+    constructors: T,
+  ): { [K in keyof T]: ConstructorInstanceType<T[K]> };
+  new<T extends Record<string, Constructor<any>>>(
+    constructors: T,
+  ): { [K in keyof T]: ConstructorInstanceType<T[K]> };
+  new(
+    constructors: Constructor<any>[] | Record<string, Constructor<any>>,
+  ): any {
+    if (Array.isArray(constructors)) {
+      return constructors.map((c) => this.box.new(c));
+    }
+    const result: Record<string, any> = {};
+    for (const [key, constructor] of Object.entries(constructors)) {
+      result[key] = this.box.new(constructor);
+    }
+    return result;
+  }
+
+  /**
    * Resolves each constructor as a cached instance via {@link Box.get}.
    * Accepts an array or object of constructors and returns instances in the same shape.
    */
@@ -202,29 +234,6 @@ class BoxAll {
     }
     return result;
   }
-
-  /**
-   * Resolves each constructor as a new transient instance via {@link Box.new}.
-   * Accepts an array or object of constructors and returns instances in the same shape.
-   */
-  new<const T extends Constructor<any>[]>(
-    constructors: T,
-  ): { [K in keyof T]: ConstructorInstanceType<T[K]> };
-  new<T extends Record<string, Constructor<any>>>(
-    constructors: T,
-  ): { [K in keyof T]: ConstructorInstanceType<T[K]> };
-  new(
-    constructors: Constructor<any>[] | Record<string, Constructor<any>>,
-  ): any {
-    if (Array.isArray(constructors)) {
-      return constructors.map((c) => this.box.new(c));
-    }
-    const result: Record<string, any> = {};
-    for (const [key, constructor] of Object.entries(constructors)) {
-      result[key] = this.box.new(constructor);
-    }
-    return result;
-  }
 }
 
 /** Builder for creating class instances with constructor dependencies resolved from a {@link Box}. */
@@ -232,10 +241,10 @@ export class Construct<T extends ClassConstructor<any>> {
   constructor(private box: Box, private construct: T) {}
 
   /**
-   * Resolves each dependency as a new transient instance via {@link Box.new},
+   * Resolves each dependency as a new instance via {@link Box.new},
    * meaning dependencies are not cached or shared.
    *
-   * The returned instance is cached or transient depending on whether the
+   * The returned instance is cached or new depending on whether the
    * class is retrieved via {@link Box.get} or {@link Box.new}.
    *
    * @example
@@ -257,7 +266,7 @@ export class Construct<T extends ClassConstructor<any>> {
    * Resolves each dependency as a cached instance via {@link Box.get},
    * meaning dependencies are shared across the box.
    *
-   * The returned instance is cached or transient depending on whether the
+   * The returned instance is cached or new depending on whether the
    * class is retrieved via {@link Box.get} or {@link Box.new}.
    *
    * @example
@@ -284,11 +293,11 @@ export class StaticConstruct<T extends ClassConstructor<any>> {
   constructor(private construct: T) {}
 
   /**
-   * Resolves each dependency as a new transient instance via {@link Box.new},
+   * Resolves each dependency as a new instance via {@link Box.new},
    * meaning dependencies are not cached or shared.
    * Returns a function compatible with `static init` that can be assigned directly.
    *
-   * The returned instance is cached or transient depending on whether the
+   * The returned instance is cached or new depending on whether the
    * class is retrieved via {@link Box.get} or {@link Box.new}.
    *
    * @example
@@ -311,7 +320,7 @@ export class StaticConstruct<T extends ClassConstructor<any>> {
    * meaning dependencies are shared across the box.
    * Returns a function compatible with `static init` that can be assigned directly.
    *
-   * The returned instance is cached or transient depending on whether the
+   * The returned instance is cached or new depending on whether the
    * class is retrieved via {@link Box.get} or {@link Box.new}.
    *
    * @example

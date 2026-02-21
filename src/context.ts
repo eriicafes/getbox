@@ -5,7 +5,7 @@ const storage = new AsyncLocalStorage<Box>();
 
 /**
  * Runs a function within a scoped {@link Box} context using AsyncLocalStorage.
- * Creates a fresh Box if none is provided.
+ * Creates a new Box if none is provided.
  */
 export function withBox<T>(fn: () => T): T;
 export function withBox<T>(box: Box, fn: () => T): T;
@@ -32,15 +32,39 @@ export function useBox(): Box {
  * Resolves a cached instance from the current {@link withBox} scope.
  * Shorthand for `useBox().get(constructor)`.
  */
-export function resolve<T extends Constructor<any>>(
+export function inject<T extends Constructor<any>>(
   constructor: T,
 ): ConstructorInstanceType<T> {
   return useBox().get(constructor);
 }
 
 /**
+ * @deprecated Use {@link inject} instead.
+ */
+export function resolve<T extends Constructor<any>>(
+  constructor: T,
+): ConstructorInstanceType<T> {
+  return inject(constructor);
+}
+
+/**
  * Resolves multiple cached instances from the current {@link withBox} scope.
  * Shorthand for `useBox().all.get(constructors)`.
+ */
+export function injectAll<const T extends Constructor<any>[]>(
+  constructors: T,
+): { [K in keyof T]: ConstructorInstanceType<T[K]> };
+export function injectAll<T extends Record<string, Constructor<any>>>(
+  constructors: T,
+): { [K in keyof T]: ConstructorInstanceType<T[K]> };
+export function injectAll(
+  constructors: Constructor<any>[] | Record<string, Constructor<any>>,
+): any {
+  return useBox().all.get(constructors as any);
+}
+
+/**
+ * @deprecated Use {@link injectAll} instead.
  */
 export function resolveAll<const T extends Constructor<any>[]>(
   constructors: T,
@@ -51,12 +75,14 @@ export function resolveAll<T extends Record<string, Constructor<any>>>(
 export function resolveAll(
   constructors: Constructor<any>[] | Record<string, Constructor<any>>,
 ): any {
-  return useBox().all.get(constructors as any);
+  return injectAll(constructors as any);
 }
 
 /**
  * Returns a builder for creating a class instance with resolved constructor
  * parameters from the current {@link withBox} scope. Shorthand for `useBox().for(constructor)`.
+ *
+ * @deprecated
  */
 export function construct<T extends new (...args: any) => any>(constructor: T) {
   return useBox().for(constructor);

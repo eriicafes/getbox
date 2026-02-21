@@ -3,8 +3,8 @@ import {
   Box,
   constant,
   ConstructorInstanceType,
+  derive,
   factory,
-  transient,
 } from "../src";
 
 describe("Box", () => {
@@ -450,11 +450,11 @@ describe("Box", () => {
     });
   });
 
-  describe("transient", () => {
+  describe("derive", () => {
     it("should create a new value on every resolution", () => {
       const box = new Box();
 
-      const RandomValue = transient(() => Math.random());
+      const RandomValue = derive(() => Math.random());
 
       const value1 = box.get(RandomValue);
       const value2 = box.get(RandomValue);
@@ -465,7 +465,7 @@ describe("Box", () => {
     it("should create a new value with box.new()", () => {
       const box = new Box();
 
-      const RandomValue = transient(() => Math.random());
+      const RandomValue = derive(() => Math.random());
 
       const value1 = box.new(RandomValue);
       const value2 = box.new(RandomValue);
@@ -480,7 +480,7 @@ describe("Box", () => {
         url = "postgres://localhost";
       }
 
-      const DbUrl = transient((box) => box.get(Database).url);
+      const DbUrl = derive((box) => box.get(Database).url);
 
       expect(box.get(DbUrl)).toBe("postgres://localhost");
     });

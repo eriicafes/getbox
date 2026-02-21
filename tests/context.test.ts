@@ -1,12 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { Box, factory } from "../src";
-import {
-  construct,
-  resolve,
-  resolveAll,
-  useBox,
-  withBox,
-} from "../src/context";
+import { inject, injectAll, useBox, withBox } from "../src/context";
 
 describe("getbox/context", () => {
   describe("withBox", () => {
@@ -40,11 +34,11 @@ describe("getbox/context", () => {
       let resolved = false;
 
       withBox(() => {
-        const db = resolve(Database);
+        const db = inject(Database);
 
         const asyncFn = async () => {
           await new Promise((r) => setTimeout(r, 10));
-          const db2 = resolve(Database);
+          const db2 = inject(Database);
           expect(db2).toBe(db);
           resolved = true;
         };
@@ -95,13 +89,13 @@ describe("getbox/context", () => {
     });
   });
 
-  describe("resolve", () => {
+  describe("inject", () => {
     it("should resolve a constructor from the scoped Box", () => {
       class MyService {
         value = 42;
       }
 
-      const result = withBox(() => resolve(MyService));
+      const result = withBox(() => inject(MyService));
       expect(result).toBeInstanceOf(MyService);
       expect(result.value).toBe(42);
     });
@@ -112,8 +106,8 @@ describe("getbox/context", () => {
       }
 
       withBox(() => {
-        const a = resolve(MyService);
-        const b = resolve(MyService);
+        const a = inject(MyService);
+        const b = inject(MyService);
         expect(a).toBe(b);
       });
     });
@@ -129,27 +123,67 @@ describe("getbox/context", () => {
         }),
       );
 
-      const result = withBox(() => resolve(LoggerFactory));
+      const result = withBox(() => inject(LoggerFactory));
       expect(result).toHaveProperty("log");
     });
 
     it("should throw outside a withBox scope", () => {
       class Foo {}
-      expect(() => resolve(Foo)).toThrow();
+      expect(() => inject(Foo)).toThrow();
+    });
+
+    it("should resolve dependencies declared as class fields", () => {
+      class Database {
+        query() {
+          return "result";
+        }
+      }
+
+      class UserService {
+        public db = inject(Database);
+      }
+
+      withBox(() => {
+        const service = inject(UserService);
+        expect(service).toBeInstanceOf(UserService);
+        expect(service.db).toBeInstanceOf(Database);
+        expect(service.db).toBe(inject(Database));
+      });
+    });
+
+    it("should resolve multiple dependencies declared as class fields", () => {
+      class Database {}
+
+      const LoggerFactory = factory(() => ({
+        log: (message: string) => message,
+      }));
+
+      class UserService {
+        public db = inject(Database);
+        public logger = inject(LoggerFactory);
+      }
+
+      withBox(() => {
+        const service = inject(UserService);
+        expect(service).toBeInstanceOf(UserService);
+        expect(service.db).toBeInstanceOf(Database);
+        expect(service.db).toBe(inject(Database));
+        expect(service.logger).toBe(inject(LoggerFactory));
+      });
     });
   });
 
-  describe("resolveAll", () => {
+  describe("injectAll", () => {
     it("should resolve an object of constructors", () => {
       class Database {}
       class Logger {}
 
       withBox(() => {
-        const { db, logger } = resolveAll({ db: Database, logger: Logger });
+        const { db, logger } = injectAll({ db: Database, logger: Logger });
         expect(db).toBeInstanceOf(Database);
         expect(logger).toBeInstanceOf(Logger);
-        expect(db).toBe(resolve(Database));
-        expect(logger).toBe(resolve(Logger));
+        expect(db).toBe(inject(Database));
+        expect(logger).toBe(inject(Logger));
       });
     });
 
@@ -158,78 +192,11 @@ describe("getbox/context", () => {
       class Logger {}
 
       withBox(() => {
-        const [db, logger] = resolveAll([Database, Logger]);
+        const [db, logger] = injectAll([Database, Logger]);
         expect(db).toBeInstanceOf(Database);
         expect(logger).toBeInstanceOf(Logger);
-        expect(db).toBe(resolve(Database));
-        expect(logger).toBe(resolve(Logger));
-      });
-    });
-  });
-
-  describe("construct", () => {
-    it("should resolve constructor dependencies", () => {
-      class Database {
-        query() {
-          return "result";
-        }
-      }
-
-      class UserService {
-        constructor(public db: Database) {}
-
-        static init() {
-          return construct(UserService).get(Database);
-        }
-      }
-
-      withBox(() => {
-        const service = resolve(UserService);
-        expect(service).toBeInstanceOf(UserService);
-        expect(service.db).toBeInstanceOf(Database);
-        expect(service.db).toBe(resolve(Database));
-      });
-    });
-  });
-
-  describe("resolve in constructor", () => {
-    it("should resolve dependencies directly in class constructor", () => {
-      class Database {
-        query() {
-          return "result";
-        }
-      }
-
-      class UserService {
-        public db = resolve(Database);
-      }
-
-      withBox(() => {
-        const service = resolve(UserService);
-        expect(service).toBeInstanceOf(UserService);
-        expect(service.db).toBeInstanceOf(Database);
-        expect(service.db).toBe(resolve(Database));
-      });
-    });
-
-    it("should resolve multiple dependencies in class constructor", () => {
-      class Database {}
-
-      const LoggerFactory = factory(() => ({
-        log: (message: string) => message,
-      }));
-
-      class UserService {
-        public db = resolve(Database);
-        public logger = resolve(LoggerFactory);
-      }
-
-      withBox(() => {
-        const service = resolve(UserService);
-        expect(service).toBeInstanceOf(UserService);
-        expect(service.db).toBeInstanceOf(Database);
-        expect(service.db).toBe(resolve(Database));
-        expect(service.logger).toBe(resolve(LoggerFactory));
+        expect(db).toBe(inject(Database));
+        expect(logger).toBe(inject(Logger));
       });
     });
   });

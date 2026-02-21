@@ -1,0 +1,5 @@
+---
+"getbox": patch
+---
+
+Deprecate `construct`

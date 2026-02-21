@@ -1,5 +1,17 @@
 # getbox
 
+## 1.4.0
+
+### Minor Changes
+
+- e74f6f5: Replace `resolve` with `inject` and deprecate `resolve`
+- e74f6f5: Replace `transient` with `derive` and deprecate `transient`
+- e74f6f5: Replace `resolveAll` with `injectAll` and deprecate `resolveAll`
+
+### Patch Changes
+
+- e74f6f5: Deprecate `construct`
+
 ## 1.3.0
 
 ### Minor Changes

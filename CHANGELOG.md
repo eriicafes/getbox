@@ -1,5 +1,23 @@
 # getbox
 
+## 2.0.0
+
+### Major Changes
+
+- 467f17f: Remove box.all — box.get() and box.new() now accept arrays and objects directly
+- 467f17f: Remove useBox from getbox/context — use getBox instead
+- 467f17f: Remove injectAll from getbox/context — use inject with an array or object instead
+- 467f17f: Remove deprecated transient and derive — use computed instead
+- 467f17f: Remove Construct class and box.for()
+- 467f17f: Remove deprecated resolve, resolveAll and construct from getbox/context
+
+### Minor Changes
+
+- 467f17f: Overload box.get() and box.new() to accept an array or object of constructors
+- 467f17f: Overload inject in getbox/context to accept an array or object of constructors
+- 467f17f: Add getBox to getbox/context
+- 467f17f: Add computed helper
+
 ## 1.4.0
 
 ### Minor Changes

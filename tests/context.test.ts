@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { Box, factory } from "../src";
-import { inject, injectAll, useBox, withBox } from "../src/context";
+import { getBox, inject, withBox } from "../src/context";
 
 describe("getbox/context", () => {
   describe("withBox", () => {
     it("should create a scope with a new Box", () => {
       const result = withBox(() => {
-        const box = useBox();
+        const box = getBox();
         expect(box).toBeInstanceOf(Box);
         return "ok";
       });
@@ -16,14 +16,14 @@ describe("getbox/context", () => {
     it("should use the provided Box", () => {
       const box = new Box();
       withBox(box, () => {
-        expect(useBox()).toBe(box);
+        expect(getBox()).toBe(box);
       });
     });
 
     it("should work with async callbacks", async () => {
       const result = await withBox(async () => {
         await new Promise((r) => setTimeout(r, 10));
-        return useBox();
+        return getBox();
       });
       expect(result).toBeInstanceOf(Box);
     });
@@ -53,11 +53,11 @@ describe("getbox/context", () => {
     it("should isolate nested scopes", () => {
       const outerBox = new Box();
       withBox(outerBox, () => {
-        expect(useBox()).toBe(outerBox);
+        expect(getBox()).toBe(outerBox);
         withBox(() => {
-          expect(useBox()).not.toBe(outerBox);
+          expect(getBox()).not.toBe(outerBox);
         });
-        expect(useBox()).toBe(outerBox);
+        expect(getBox()).toBe(outerBox);
       });
     });
 
@@ -68,11 +68,11 @@ describe("getbox/context", () => {
       const [result1, result2] = await Promise.all([
         withBox(box1, async () => {
           await new Promise((r) => setTimeout(r, 10));
-          return useBox();
+          return getBox();
         }),
         withBox(box2, async () => {
           await new Promise((r) => setTimeout(r, 10));
-          return useBox();
+          return getBox();
         }),
       ]);
 
@@ -81,10 +81,10 @@ describe("getbox/context", () => {
     });
   });
 
-  describe("useBox", () => {
+  describe("getBox", () => {
     it("should throw outside a withBox scope", () => {
-      expect(() => useBox()).toThrow(
-        "useBox() must be called within a withBox() scope",
+      expect(() => getBox()).toThrow(
+        "getBox() must be called within a withBox() scope",
       );
     });
   });
@@ -171,15 +171,13 @@ describe("getbox/context", () => {
         expect(service.logger).toBe(inject(LoggerFactory));
       });
     });
-  });
 
-  describe("injectAll", () => {
     it("should resolve an object of constructors", () => {
       class Database {}
       class Logger {}
 
       withBox(() => {
-        const { db, logger } = injectAll({ db: Database, logger: Logger });
+        const { db, logger } = inject({ db: Database, logger: Logger });
         expect(db).toBeInstanceOf(Database);
         expect(logger).toBeInstanceOf(Logger);
         expect(db).toBe(inject(Database));
@@ -192,7 +190,7 @@ describe("getbox/context", () => {
       class Logger {}
 
       withBox(() => {
-        const [db, logger] = injectAll([Database, Logger]);
+        const [db, logger] = inject([Database, Logger]);
         expect(db).toBeInstanceOf(Database);
         expect(logger).toBeInstanceOf(Logger);
         expect(db).toBe(inject(Database));

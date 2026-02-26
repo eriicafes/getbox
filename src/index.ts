@@ -1,7 +1,8 @@
 /**
- * A type that can be resolved by a {@link Box}. Either an object with an
- * `init(box: Box)` method, a class with a `static init(box: Box)` method
- * that returns an instance, or a class with a no-argument constructor.
+ * A type that can be resolved by a {@link Box}. Either a class with a
+ * `static init` function that returns an instance, a class with a
+ * no-argument constructor, or a function-based constructor created by
+ * {@link factory}, {@link computed}, or {@link constant}.
  */
 export type Constructor<T> = { init(box: Box): T } | { new (): T };
 
@@ -11,6 +12,12 @@ export type ConstructorInstanceType<T> = T extends { init(box: Box): infer U }
   : T extends { new (): infer U }
   ? U
   : never;
+
+const cacheSymbol = Symbol("Box.cache");
+
+const isClass = (fn: Function) =>
+  fn.prototype !== undefined &&
+  Function.prototype.toString.call(fn).startsWith("class");
 
 /**
  * Creates a {@link Constructor} from a factory function.
@@ -26,10 +33,8 @@ export type ConstructorInstanceType<T> = T extends { init(box: Box): infer U }
  * ```
  */
 export function factory<T>(init: (box: Box) => T): Constructor<T> {
-  return { init };
+  return { [cacheSymbol]: true, init } as Constructor<T>;
 }
-
-const noCacheSymbol = Symbol("Box.noCache");
 
 /**
  * Creates a {@link Constructor} that computes a value from the box without caching the result.
@@ -40,7 +45,7 @@ const noCacheSymbol = Symbol("Box.noCache");
  *   baseUrl = "https://example.com";
  * }
  *
- * const RequestContext = derive((box) => ({
+ * const RequestContext = computed((box) => ({
  *   baseUrl: box.get(Config).baseUrl,
  *   timestamp: Date.now(),
  * }));
@@ -50,21 +55,13 @@ const noCacheSymbol = Symbol("Box.noCache");
  * console.log(ctx1 === ctx2); // false
  * ```
  */
-export function derive<T>(init: (box: Box) => T): Constructor<T> {
-  const constructor = { init, [noCacheSymbol]: true };
-  return constructor;
-}
-
-/**
- * @deprecated Use {@link derive} instead.
- */
-export function transient<T>(init: (box: Box) => T): Constructor<T> {
-  return derive(init);
+export function computed<T>(init: (box: Box) => T): Constructor<T> {
+  return { init } as Constructor<T>;
 }
 
 /**
  * Creates a {@link Constructor} that always resolves to the given constant value.
- * Constant values are never cached since they are already fixed.
+ * Constant values are already fixed and do not need caching.
  *
  * @example
  * ```ts
@@ -73,18 +70,16 @@ export function transient<T>(init: (box: Box) => T): Constructor<T> {
  * ```
  */
 export function constant<const T>(value: T): Constructor<T> {
-  const constructor = { init: () => value, [noCacheSymbol]: true };
-  return constructor;
+  return { init: () => value } as Constructor<T>;
 }
 
 /**
  * Dependency injection container that resolves and caches instances from
  * a {@link Constructor}.
  *
- * A constructor is an object with an `init(box: Box)` method,
- * a class with a `static init(box: Box)` method, or a class with a
- * no-argument constructor. The {@link factory} and {@link constant} helpers
- * create constructors from functions and values respectively.
+ * A constructor is a class with a `static init` function, a class with a
+ * no-argument constructor, or a function-based constructor created by
+ * {@link factory}, {@link computed}, or {@link constant}.
  *
  * @example
  * ```ts
@@ -109,47 +104,81 @@ export class Box {
 
   /**
    * Creates a new instance without caching.
+   * Accepts a single constructor, an array of constructors, or an object map of constructors.
    */
   public new<T extends Constructor<any>>(
     constructor: T,
-  ): ConstructorInstanceType<T> {
-    return "init" in constructor ? constructor.init(this) : new constructor();
+  ): ConstructorInstanceType<T>;
+  public new<const T extends Constructor<any>[]>(
+    constructors: T,
+  ): { [K in keyof T]: ConstructorInstanceType<T[K]> };
+  public new<T extends Record<string, Constructor<any>>>(
+    constructors: T,
+  ): { [K in keyof T]: ConstructorInstanceType<T[K]> };
+  public new(arg: any): any {
+    // handle array with constructor items
+    if (Array.isArray(arg)) return arg.map((c) => this.new(c));
+
+    // handle class constructor (may have static init)
+    if (typeof arg === "function") {
+      return "init" in arg ? arg.init(this) : new arg();
+    }
+    // handle object with a static init function (function-based constructor)
+    if ("init" in arg && !isClass(arg.init)) {
+      return arg.init(this);
+    }
+    // handle object with constructor keys
+    const result: Record<string, any> = {};
+    for (const [key, constructor] of Object.entries(arg) as [string, any][]) {
+      result[key] = this.new(constructor);
+    }
+    return result;
   }
 
   /**
    * Resolves an instance from the cache, or creates and caches a new one.
    * Subsequent calls with the same constructor return the cached instance.
+   * Accepts a single constructor, an array of constructors, or an object map of constructors.
    */
   public get<T extends Constructor<any>>(
     constructor: T,
-  ): ConstructorInstanceType<T> {
-    if (this.cache.has(constructor)) return this.cache.get(constructor);
+  ): ConstructorInstanceType<T>;
+  public get<const T extends Constructor<any>[]>(
+    constructors: T,
+  ): { [K in keyof T]: ConstructorInstanceType<T[K]> };
+  public get<T extends Record<string, Constructor<any>>>(
+    constructors: T,
+  ): { [K in keyof T]: ConstructorInstanceType<T[K]> };
+  public get(arg: any): any {
+    // handle array with constructor items
+    if (Array.isArray(arg)) return arg.map((c) => this.get(c));
 
-    const value = this.new(constructor);
-    const skipCache =
-      noCacheSymbol in constructor && constructor[noCacheSymbol];
-    if (!skipCache) this.cache.set(constructor, value);
-    return value;
+    // handle class constructor (may have static init)
+    if (typeof arg === "function") {
+      if (this.cache.has(arg)) return this.cache.get(arg);
+      const value = "init" in arg ? arg.init(this) : new arg();
+      // cache resolved class constructor value
+      this.cache.set(arg, value);
+      return value;
+    }
+    // handle object with a static init function (function-based constructor)
+    if ("init" in arg && !isClass(arg.init)) {
+      if (this.cache.has(arg)) return this.cache.get(arg);
+      const value = arg.init(this);
+      // cache resolved constructor value if cacheable
+      if (cacheSymbol in arg) this.cache.set(arg, value);
+      return value;
+    }
+    // handle object with constructor keys
+    const result: Record<string, any> = {};
+    for (const [key, constructor] of Object.entries(arg) as [string, any][]) {
+      result[key] = this.get(constructor);
+    }
+    return result;
   }
 
-  /** Resolves multiple constructors at once. */
-  public readonly all = new BoxAll(this);
-
   /**
-   * Returns a {@link Construct} builder for creating class instances by
-   * resolving constructors for each constructor parameter.
-   *
-   * Intended to be used inside a class's `static init` method. The instance
-   * returned by the builder is never cached itself, but can be cached when
-   * the class is retrieved via {@link Box.get} or new via {@link Box.new}.
-   */
-  public for<T extends ClassConstructor<any>>(constructor: T) {
-    return new Construct(this, constructor);
-  }
-
-  /**
-   * Returns a {@link StaticConstruct} builder for defining a `static init` method.
-   * The result can be assigned directly to `static init`.
+   * Returns a `static init` function builder.
    *
    * @example
    * ```ts
@@ -160,7 +189,7 @@ export class Box {
    * ```
    */
   public static init<T extends ClassConstructor<any>>(constructor: T) {
-    return new StaticConstruct(constructor);
+    return new StaticInit(constructor);
   }
 
   /**
@@ -178,110 +207,16 @@ export class Box {
   /**
    * Removes the instance from the box's cache for a given constructor.
    * Removes all instances if no constructor is provided.
+   *
+   * Returns true if an instance existed and has been removed from the box's cache.
    */
   public static clear<T>(box: Box, constructor?: Constructor<T>) {
-    if (!constructor) return box.cache.clear();
-    box.cache.delete(constructor);
-  }
-}
-
-/** Resolves multiple constructors at once from a {@link Box}. */
-class BoxAll {
-  constructor(private box: Box) {}
-
-  /**
-   * Resolves each constructor as a new instance via {@link Box.new}.
-   * Accepts an array or object of constructors and returns instances in the same shape.
-   */
-  new<const T extends Constructor<any>[]>(
-    constructors: T,
-  ): { [K in keyof T]: ConstructorInstanceType<T[K]> };
-  new<T extends Record<string, Constructor<any>>>(
-    constructors: T,
-  ): { [K in keyof T]: ConstructorInstanceType<T[K]> };
-  new(
-    constructors: Constructor<any>[] | Record<string, Constructor<any>>,
-  ): any {
-    if (Array.isArray(constructors)) {
-      return constructors.map((c) => this.box.new(c));
+    if (!constructor) {
+      const size = box.cache.size;
+      box.cache.clear();
+      return size > 0;
     }
-    const result: Record<string, any> = {};
-    for (const [key, constructor] of Object.entries(constructors)) {
-      result[key] = this.box.new(constructor);
-    }
-    return result;
-  }
-
-  /**
-   * Resolves each constructor as a cached instance via {@link Box.get}.
-   * Accepts an array or object of constructors and returns instances in the same shape.
-   */
-  get<const T extends Constructor<any>[]>(
-    constructors: T,
-  ): { [K in keyof T]: ConstructorInstanceType<T[K]> };
-  get<T extends Record<string, Constructor<any>>>(
-    constructors: T,
-  ): { [K in keyof T]: ConstructorInstanceType<T[K]> };
-  get(
-    constructors: Constructor<any>[] | Record<string, Constructor<any>>,
-  ): any {
-    if (Array.isArray(constructors)) {
-      return constructors.map((c) => this.box.get(c));
-    }
-    const result: Record<string, any> = {};
-    for (const [key, constructor] of Object.entries(constructors)) {
-      result[key] = this.box.get(constructor);
-    }
-    return result;
-  }
-}
-
-/** Builder for creating class instances with constructor dependencies resolved from a {@link Box}. */
-export class Construct<T extends ClassConstructor<any>> {
-  constructor(private box: Box, private construct: T) {}
-
-  /**
-   * Resolves each dependency as a new instance via {@link Box.new},
-   * meaning dependencies are not cached or shared.
-   *
-   * The returned instance is cached or new depending on whether the
-   * class is retrieved via {@link Box.get} or {@link Box.new}.
-   *
-   * @example
-   * ```ts
-   * class UserService {
-   *   constructor(private db: Database, private logger: Logger) {}
-   *   static init(box: Box) {
-   *     return box.for(UserService).new(Database, LoggerFactory);
-   *   }
-   * }
-   * ```
-   */
-  public new(...args: ClassConstructorArgs<T>): InstanceType<T> {
-    const instances = args.map((arg) => this.box.new(arg));
-    return new this.construct(...instances);
-  }
-
-  /**
-   * Resolves each dependency as a cached instance via {@link Box.get},
-   * meaning dependencies are shared across the box.
-   *
-   * The returned instance is cached or new depending on whether the
-   * class is retrieved via {@link Box.get} or {@link Box.new}.
-   *
-   * @example
-   * ```ts
-   * class UserService {
-   *   constructor(private db: Database, private logger: Logger) {}
-   *   static init(box: Box) {
-   *     return box.for(UserService).get(Database, LoggerFactory);
-   *   }
-   * }
-   * ```
-   */
-  public get(...args: ClassConstructorArgs<T>): InstanceType<T> {
-    const instances = args.map((arg) => this.box.get(arg));
-    return new this.construct(...instances);
+    return box.cache.delete(constructor);
   }
 }
 
@@ -289,7 +224,7 @@ export class Construct<T extends ClassConstructor<any>> {
  * Builder for creating a `static init` function with constructor dependencies
  * resolved from a {@link Box}.
  */
-export class StaticConstruct<T extends ClassConstructor<any>> {
+export class StaticInit<T extends ClassConstructor<any>> {
   constructor(private construct: T) {}
 
   /**
@@ -304,14 +239,13 @@ export class StaticConstruct<T extends ClassConstructor<any>> {
    * ```ts
    * class UserService {
    *   constructor(private db: Database, private logger: Logger) {}
-   *   static init = Box.init(UserService).get(Database, LoggerFactory);
+   *   static init = Box.init(UserService).new(Database, LoggerFactory);
    * }
    * ```
    */
   public new(...args: ClassConstructorArgs<T>): (box: Box) => InstanceType<T> {
     return (box) => {
-      const instances = args.map((arg) => box.new(arg));
-      return new this.construct(...instances);
+      return new this.construct(...box.new(args));
     };
   }
 
@@ -333,8 +267,7 @@ export class StaticConstruct<T extends ClassConstructor<any>> {
    */
   public get(...args: ClassConstructorArgs<T>): (box: Box) => InstanceType<T> {
     return (box) => {
-      const instances = args.map((arg) => box.get(arg));
-      return new this.construct(...instances);
+      return new this.construct(...box.get(args));
     };
   }
 }

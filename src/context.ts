@@ -4,8 +4,10 @@ import { Box, Constructor, ConstructorInstanceType } from "./index";
 const storage = new AsyncLocalStorage<Box>();
 
 /**
- * Runs a function within a scoped {@link Box} context using AsyncLocalStorage.
+ * Runs a function within a Box scope using AsyncLocalStorage.
  * Creates a new Box if none is provided.
+ *
+ * If the callback function throws an error, the error is thrown by withBox too.
  */
 export function withBox<T>(fn: () => T): T;
 export function withBox<T>(box: Box, fn: () => T): T;
@@ -17,73 +19,29 @@ export function withBox<T>(boxOrFn: Box | (() => T), fn?: () => T): T {
 }
 
 /**
- * Returns the current {@link Box} from the active {@link withBox} scope.
- * Throws if called outside a scope.
+ * Returns the current Box from the active Box scope.
+ * Throws if called outside a Box scope.
  */
-export function useBox(): Box {
+export function getBox(): Box {
   const box = storage.getStore();
-  if (!box) {
-    throw new Error("useBox() must be called within a withBox() scope");
-  }
-  return box;
+  if (box) return box;
+  throw new Error("getBox() must be called within a withBox() scope");
 }
 
 /**
- * Resolves a cached instance from the current {@link withBox} scope.
- * Shorthand for `useBox().get(constructor)`.
+ * Resolves instances from the active Box scope.
+ * Accepts a single constructor, an array of constructors, or an object map of constructors.
+ * Throws if called outside a Box scope.
  */
 export function inject<T extends Constructor<any>>(
   constructor: T,
-): ConstructorInstanceType<T> {
-  return useBox().get(constructor);
-}
-
-/**
- * @deprecated Use {@link inject} instead.
- */
-export function resolve<T extends Constructor<any>>(
-  constructor: T,
-): ConstructorInstanceType<T> {
-  return inject(constructor);
-}
-
-/**
- * Resolves multiple cached instances from the current {@link withBox} scope.
- * Shorthand for `useBox().all.get(constructors)`.
- */
-export function injectAll<const T extends Constructor<any>[]>(
+): ConstructorInstanceType<T>;
+export function inject<const T extends Constructor<any>[]>(
   constructors: T,
 ): { [K in keyof T]: ConstructorInstanceType<T[K]> };
-export function injectAll<T extends Record<string, Constructor<any>>>(
+export function inject<T extends Record<string, Constructor<any>>>(
   constructors: T,
 ): { [K in keyof T]: ConstructorInstanceType<T[K]> };
-export function injectAll(
-  constructors: Constructor<any>[] | Record<string, Constructor<any>>,
-): any {
-  return useBox().all.get(constructors as any);
-}
-
-/**
- * @deprecated Use {@link injectAll} instead.
- */
-export function resolveAll<const T extends Constructor<any>[]>(
-  constructors: T,
-): { [K in keyof T]: ConstructorInstanceType<T[K]> };
-export function resolveAll<T extends Record<string, Constructor<any>>>(
-  constructors: T,
-): { [K in keyof T]: ConstructorInstanceType<T[K]> };
-export function resolveAll(
-  constructors: Constructor<any>[] | Record<string, Constructor<any>>,
-): any {
-  return injectAll(constructors as any);
-}
-
-/**
- * Returns a builder for creating a class instance with resolved constructor
- * parameters from the current {@link withBox} scope. Shorthand for `useBox().for(constructor)`.
- *
- * @deprecated
- */
-export function construct<T extends new (...args: any) => any>(constructor: T) {
-  return useBox().for(constructor);
+export function inject(arg: any): any {
+  return getBox().get(arg);
 }

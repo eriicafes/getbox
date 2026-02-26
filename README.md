@@ -49,7 +49,7 @@ console.log(office.printer === printer); // true
 
 ## Constructors
 
-Constructors define what the box resolves. `getbox` supports classes, factories, derived values, and constants. Because constructors act as interfaces, the underlying implementation can change without affecting any consumer.
+Constructors define what the box resolves. `getbox` supports classes, factories, computed values, and constants. Because constructors act as interfaces, the underlying implementation can change without affecting any consumer.
 
 ### Classes
 
@@ -73,7 +73,7 @@ const service = box.get(UserService);
 service.createUser("Alice");
 ```
 
-`Box.init` is shorthand for writing the `static init` property yourself.
+`Box.init` is shorthand for writing the `static init` function yourself.
 
 ```ts
 class UserService {
@@ -81,20 +81,6 @@ class UserService {
 
   static init(box: Box) {
     return new UserService(box.get(Database), box.get(LoggerFactory));
-  }
-}
-```
-
-Use `box.for()` when you need custom logic alongside dependency resolution.
-
-```ts
-class UserService {
-  constructor(private db: Database, private logger: Logger) {}
-
-  static init(box: Box) {
-    const logger = box.get(LoggerFactory);
-    logger.log("Initializing UserService");
-    return box.for(UserService).get(Database, LoggerFactory);
   }
 }
 ```
@@ -112,13 +98,11 @@ interface Logger {
   log(message: string): void;
 }
 
-const LoggerFactory = factory(
-  (): Logger => ({
-    log(message: string) {
-      console.log(`[LOG] ${message}`);
-    },
-  }),
-);
+const LoggerFactory = factory<Logger>(() => ({
+  log(message: string) {
+    console.log(`[LOG] ${message}`);
+  },
+}));
 
 const box = new Box();
 const logger = box.get(LoggerFactory);
@@ -126,18 +110,18 @@ const logger = box.get(LoggerFactory);
 logger.log("hello world");
 ```
 
-### Derived values
+### Computed values
 
-Use the `derive` helper to compute a value from the box without caching the result.
+Use the `computed` helper to compute a value from the box without caching the result.
 
 ```ts
-import { Box, derive } from "getbox";
+import { Box, computed } from "getbox";
 
 class Config {
   baseUrl = "https://example.com";
 }
 
-const RequestContext = derive((box) => ({
+const RequestContext = computed((box) => ({
   baseUrl: box.get(Config).baseUrl,
   timestamp: Date.now(),
 }));
@@ -152,7 +136,7 @@ console.log(ctx1 === ctx2); // false
 
 ### Constants
 
-Use the `constant` helper to wrap a fixed value as a constructor. Constant values are never cached and always return the same stable reference.
+Use the `constant` helper to wrap a fixed value as a constructor. Constant values are already fixed and do not need caching.
 
 ```ts
 import { Box, constant } from "getbox";
@@ -195,21 +179,21 @@ const db4 = box.new(Database);
 console.log(db3 === db4); // false (never cached)
 ```
 
-Use `box.all.get()` or `box.all.new()` to resolve multiple constructors at once. Pass an array to get an array of instances, or an object to get an object of instances.
+Both `box.get()` and `box.new()` also accept an array or object of constructors to resolve multiple at once.
 
 ```ts
 const box = new Box();
 
 // Cached
-const { db, logger } = box.all.get({ db: Database, logger: LoggerFactory });
-const [db2, logger2] = box.all.get([Database, LoggerFactory]);
+const { db, logger } = box.get({ db: Database, logger: LoggerFactory });
+const [db2, logger2] = box.get([Database, LoggerFactory]);
 
 // New instances
-const { db3 } = box.all.new({ db3: Database });
-const [db4] = box.all.new([Database]);
+const { db3 } = box.new({ db3: Database });
+const [db4] = box.new([Database]);
 ```
 
-> `box.get()` does not cache `derive` or `constant` values.
+> `box.get()` does not cache `computed` or `constant` values.
 
 ## Mocking
 
@@ -243,17 +227,21 @@ console.log(mockLogger.messages); // ["Creating user: Alice"]
 
 Use `Box.clear` to remove cached instances. Pass a specific constructor to clear a single entry, or omit it to clear all cached instances.
 
+Returns `true` if an instance was removed, `false` otherwise.
+
 ```ts
 const box = new Box();
 
 const db = box.get(Database);
 
 // Clear a specific constructor
-Box.clear(box, Database);
+const cleared = Box.clear(box, Database);
+console.log(cleared);
 console.log(box.get(Database) === db); // false (new instance)
 
 // Clear all cached instances
-Box.clear(box);
+const clearedAll = Box.clear(box);
+console.log(clearedAll);
 ```
 
 ## Circular dependencies

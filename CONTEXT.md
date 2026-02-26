@@ -63,15 +63,15 @@ class UserService {
 
 ## Resolving multiple dependencies
 
-Use `injectAll` to resolve multiple constructors at once. Accepts an object or array of constructors.
+Pass an array or object of constructors to `inject` to resolve multiple at once.
 
 ```ts
 withBox(() => {
   // Object form
-  const { db, logger } = injectAll({ db: Database, logger: LoggerFactory });
+  const { db, logger } = inject({ db: Database, logger: LoggerFactory });
 
   // Array form
-  const [db2, logger2] = injectAll([Database, LoggerFactory]);
+  const [db2, logger2] = inject([Database, LoggerFactory]);
 
   console.log(db === db2); // true (cached)
   console.log(logger === logger2); // true (cached)
@@ -80,11 +80,11 @@ withBox(() => {
 
 ## Accessing the box
 
-Use `useBox()` to get the current box from the scope. This is useful when you need full access to the box API.
+Use `getBox()` to get the current box from the scope. This is useful when you need full access to the box API.
 
 ```ts
 withBox(() => {
-  const box = useBox();
+  const box = getBox();
   const db = box.new(Database);
 });
 ```

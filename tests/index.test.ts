@@ -1,15 +1,9 @@
 import { describe, expect, it } from "vitest";
-import {
-  Box,
-  constant,
-  ConstructorInstanceType,
-  derive,
-  factory,
-} from "../src";
+import { Box, computed, constant, factory } from "../src";
 
 describe("Box", () => {
   describe("new", () => {
-    it("should create a new instance each time without caching", () => {
+    it("should create a new instance with constructors", () => {
       const box = new Box();
 
       class TestClass {
@@ -25,39 +19,7 @@ describe("Box", () => {
       expect(instance1.value).not.toBe(instance2.value);
     });
 
-    it("should create new instances with factory constructors", () => {
-      const box = new Box();
-
-      const TestFactory = factory((box: Box) => {
-        return { value: Math.random() };
-      });
-
-      const instance1 = box.new(TestFactory);
-      const instance2 = box.new(TestFactory);
-
-      expect(instance1).not.toBe(instance2);
-      expect(instance1.value).not.toBe(instance2.value);
-    });
-
-    it("should not affect cached instances from box.get", () => {
-      const box = new Box();
-
-      class TestClass {
-        value = Math.random();
-      }
-
-      const cached = box.get(TestClass);
-      const transient1 = box.new(TestClass);
-      const transient2 = box.new(TestClass);
-      const cachedAgain = box.get(TestClass);
-
-      expect(cached).toBe(cachedAgain);
-      expect(transient1).not.toBe(cached);
-      expect(transient2).not.toBe(cached);
-      expect(transient1).not.toBe(transient2);
-    });
-
-    it("should resolve dependencies from cache when using init", () => {
+    it("should resolve cached dependencies", () => {
       const box = new Box();
 
       class DependencyA {
@@ -76,36 +38,100 @@ describe("Box", () => {
         }
       }
 
-      const cachedDepA = box.get(DependencyA);
       const instance1 = box.new(TestClass);
       const instance2 = box.new(TestClass);
+      const cachedDepA = box.get(DependencyA);
       const cachedDepB = box.get(DependencyB);
 
       expect(instance1).not.toBe(instance2);
       expect(instance1.depA).toBe(cachedDepA);
       expect(instance2.depA).toBe(cachedDepA);
-      expect(instance1.depA).toBe(instance2.depA);
       expect(instance1.depB).toBe(cachedDepB);
       expect(instance2.depB).toBe(cachedDepB);
-      expect(instance1.depB).toBe(instance2.depB);
+    });
+
+    it("should resolve an array of constructors as new instances", () => {
+      const box = new Box();
+
+      class ServiceA {
+        id = Math.random();
+      }
+
+      class ServiceB {
+        id = Math.random();
+      }
+
+      const [a1] = box.new([ServiceA]);
+      const [a2, b1] = box.new([ServiceA, ServiceB]);
+
+      expect(a1).toBeInstanceOf(ServiceA);
+      expect(a2).toBeInstanceOf(ServiceA);
+      expect(b1).toBeInstanceOf(ServiceB);
+      expect(a1).not.toBe(a2);
+    });
+
+    it("should resolve an object of constructors as new instances", () => {
+      const box = new Box();
+
+      class ServiceA {
+        id = Math.random();
+      }
+
+      class ServiceB {
+        id = Math.random();
+      }
+
+      const { a1 } = box.new({ a1: ServiceA });
+      const { a2, b1 } = box.new({ a2: ServiceA, b1: ServiceB });
+
+      expect(a1).toBeInstanceOf(ServiceA);
+      expect(a2).toBeInstanceOf(ServiceA);
+      expect(b1).toBeInstanceOf(ServiceB);
+      expect(a1).not.toBe(a2);
+    });
+
+    it("should treat an object with an 'init' method and extra properties as a constructor", () => {
+      const box = new Box();
+
+      class Database {
+        name = "db";
+      }
+
+      class Logger {
+        name = "logger";
+      }
+
+      // init is a method called, so treats like a constructor
+      const result = box.new({
+        init(box: Box) {
+          return box.get(Database);
+        },
+        logger: Logger,
+      });
+      expect(result).toBeInstanceOf(Database);
+    });
+
+    it("should treat an object map with an 'init' key that is a class as an object map", () => {
+      const box = new Box();
+
+      class Database {
+        name = "db";
+      }
+
+      const LoggerFactory = factory(() => ({ name: "logger" }));
+
+      // Database is a class, so treats this as an object map.
+      const result = box.new({
+        init: Database,
+        logger: LoggerFactory,
+      });
+      expect(result.init).toBeInstanceOf(Database);
+      expect(result.logger.name).toBe("logger");
     });
   });
 
   describe("get", () => {
-    it("should create and return an instance of a class", () => {
-      const box = new Box();
-
-      class TestClass {
-        value = "test";
-      }
-
-      const instance = box.get(TestClass);
-
-      expect(instance).toBeInstanceOf(TestClass);
-      expect(instance.value).toBe("test");
-    });
-
-    it("should cache instances and return the same instance on subsequent calls", () => {
+    it("should create and cache an instance with constructors", () => {
       const box = new Box();
 
       class TestClass {
@@ -115,58 +141,122 @@ describe("Box", () => {
       const instance1 = box.get(TestClass);
       const instance2 = box.get(TestClass);
 
+      expect(instance1).toBeInstanceOf(TestClass);
       expect(instance1).toBe(instance2);
-      expect(instance1.value).toBe(instance2.value);
     });
 
-    it("should resolve dependencies using box in static init", () => {
+    it("should resolve cached dependencies", () => {
       const box = new Box();
 
-      class Dependency {
-        value = "dependency";
-      }
-
-      class TestClass {
-        constructor(public dep: Dependency) {}
-
-        static init(box: Box) {
-          return new TestClass(box.get(Dependency));
-        }
-      }
-
-      const instance = box.get(TestClass);
-
-      expect(instance.dep).toBeInstanceOf(Dependency);
-      expect(instance.dep.value).toBe("dependency");
-    });
-
-    it("should share dependency instances across multiple classes", () => {
-      const box = new Box();
-
-      class SharedDependency {
+      class DependencyA {
         value = Math.random();
       }
 
-      class ClassA {
-        constructor(public dep: SharedDependency) {}
+      class DependencyB {
+        value = Math.random();
+      }
+
+      class TestClass {
+        constructor(public depA: DependencyA, public depB: DependencyB) {}
 
         static init(box: Box) {
-          return new ClassA(box.get(SharedDependency));
+          return new TestClass(box.get(DependencyA), box.get(DependencyB));
         }
       }
 
-      class ClassB {
-        constructor(public dep: SharedDependency) {}
+      const instance1 = box.get(TestClass);
+      const instance2 = box.get(TestClass);
+      const cachedDepA = box.get(DependencyA);
+      const cachedDepB = box.get(DependencyB);
 
-        static init(box: Box) {
-          return new ClassB(box.get(SharedDependency));
-        }
+      expect(instance1).toBe(instance2);
+      expect(instance1.depA).toBe(cachedDepA);
+      expect(instance2.depA).toBe(cachedDepA);
+      expect(instance1.depB).toBe(cachedDepB);
+      expect(instance2.depB).toBe(cachedDepB);
+    });
+
+    it("should resolve an array of constructors as cached instances", () => {
+      const box = new Box();
+
+      class ServiceA {
+        name = "A";
       }
 
-      const instanceA = box.get(ClassA);
-      const instanceB = box.get(ClassB);
+      class ServiceB {
+        name = "B";
+      }
 
-      expect(instanceA.dep).toBe(instanceB.dep);
+      const [a1] = box.get([ServiceA]);
+      const [a2, b1] = box.get([ServiceA, ServiceB]);
+
+      expect(a1).toBeInstanceOf(ServiceA);
+      expect(a2).toBeInstanceOf(ServiceA);
+      expect(b1).toBeInstanceOf(ServiceB);
+      expect(a1).toBe(a2);
+      expect(a1).toBe(box.get(ServiceA));
+      expect(b1).toBe(box.get(ServiceB));
+    });
+
+    it("should resolve an object of constructors as cached instances", () => {
+      const box = new Box();
+
+      class ServiceA {
+        name = "A";
+      }
+
+      class ServiceB {
+        name = "B";
+      }
+
+      const { a1 } = box.get({ a1: ServiceA });
+      const { a2, b1 } = box.get({ a2: ServiceA, b1: ServiceB });
+
+      expect(a1).toBeInstanceOf(ServiceA);
+      expect(a2).toBeInstanceOf(ServiceA);
+      expect(b1).toBeInstanceOf(ServiceB);
+      expect(a1).toBe(a2);
+      expect(a1).toBe(box.get(ServiceA));
+      expect(b1).toBe(box.get(ServiceB));
+    });
+
+    it("should treat an object with an 'init' method and extra properties as a constructor", () => {
+      const box = new Box();
+
+      class Database {
+        name = "db";
+      }
+
+      class Logger {
+        name = "logger";
+      }
+
+      // init is a method called, so treats like a constructor
+      const result = box.get({
+        init(box: Box) {
+          return box.get(Database);
+        },
+        logger: Logger,
+      });
+      expect(result).toBeInstanceOf(Database);
+    });
+
+    it("should treat an object map with an 'init' key that is a class as an object map", () => {
+      const box = new Box();
+
+      class Database {
+        name = "db";
+      }
+
+      const LoggerFactory = factory(() => ({ name: "logger" }));
+
+      // Database is a class, so treats this as an object map.
+      const result = box.get({
+        init: Database,
+        logger: LoggerFactory,
+      });
+      expect(result.init).toBeInstanceOf(Database);
+      expect(result.logger.name).toBe("logger");
     });
   });
 
@@ -174,24 +264,22 @@ describe("Box", () => {
     it("should create a static init function with cached dependencies", () => {
       const box = new Box();
 
-      class Database {
-        name = "db";
+      class Dependency {
+        id = Math.random();
       }
 
       class UserService {
-        constructor(public db: Database) {}
-        static init = Box.init(UserService).get(Database);
+        constructor(public dep: Dependency) {}
+        static init = Box.init(UserService).get(Dependency);
       }
 
-      const service = box.get(UserService);
-      const db = box.get(Database);
+      const service1 = box.new(UserService);
+      const service2 = box.new(UserService);
 
-      expect(service).toBeInstanceOf(UserService);
-      expect(service.db).toBeInstanceOf(Database);
-      expect(service.db).toBe(db);
+      expect(service1.dep).toBe(service2.dep);
     });
 
-    it("should create a static init function with transient dependencies", () => {
+    it("should create a static init function with new dependencies", () => {
       const box = new Box();
 
       class Dependency {
@@ -225,39 +313,6 @@ describe("Box", () => {
       expect(logger.log("hello")).toBe("hello");
     });
 
-    it("should cache the instance when retrieved via box.get()", () => {
-      const box = new Box();
-
-      class Database {}
-
-      class UserService {
-        constructor(public db: Database) {}
-        static init = Box.init(UserService).get(Database);
-      }
-
-      const service1 = box.get(UserService);
-      const service2 = box.get(UserService);
-
-      expect(service1).toBe(service2);
-    });
-
-    it("should create a new instance when retrieved via box.new()", () => {
-      const box = new Box();
-
-      class Database {}
-
-      class UserService {
-        constructor(public db: Database) {}
-        static init = Box.init(UserService).get(Database);
-      }
-
-      const service1 = box.new(UserService);
-      const service2 = box.new(UserService);
-
-      expect(service1).not.toBe(service2);
-      expect(service1.db).toBe(service2.db);
-    });
-
     it("should override a no-argument constructor returning a different instance", () => {
       const box = new Box();
 
@@ -278,103 +333,52 @@ describe("Box", () => {
       expect(result).toBeInstanceOf(Database);
       expect(result.name).toBe("db");
     });
-
-    it("should behave identically to static init method", () => {
-      const box = new Box();
-
-      class Database {
-        id = Math.random();
-      }
-
-      class UserServiceConcise {
-        constructor(public db: Database) {}
-        static init = Box.init(UserServiceConcise).get(Database);
-      }
-
-      class UserServiceVerbose {
-        constructor(public db: Database) {}
-        static init(box: Box) {
-          return new UserServiceVerbose(box.get(Database));
-        }
-      }
-
-      const concise = box.get(UserServiceConcise);
-      const verbose = box.get(UserServiceVerbose);
-
-      expect(concise).toBeInstanceOf(UserServiceConcise);
-      expect(verbose).toBeInstanceOf(UserServiceVerbose);
-      expect(concise.db).toBe(verbose.db);
-    });
   });
 
   describe("factory", () => {
-    it("should create a factory constructor", () => {
+    it("should create a value from a function", () => {
       const box = new Box();
 
-      const TestFactory = factory((box: Box) => {
-        return { value: "from factory" };
-      });
+      const TestFactory = factory(() => ({ value: "from factory" }));
 
-      const instance = box.get(TestFactory);
-
-      expect(instance.value).toBe("from factory");
+      expect(box.get(TestFactory).value).toBe("from factory");
     });
 
-    it("should cache factory instances", () => {
-      const box = new Box();
-
-      const TestFactory = factory((box: Box) => {
-        return { value: Math.random() };
-      });
-
-      const instance1 = box.get(TestFactory);
-      const instance2 = box.get(TestFactory);
-
-      expect(instance1).toBe(instance2);
-      expect(instance1.value).toBe(instance2.value);
-    });
-
-    it("should resolve dependencies in factory functions", () => {
+    it("should receive box as an argument", () => {
       const box = new Box();
 
       class Dependency {
         value = "dependency";
       }
 
-      const TestFactory = factory((box: Box) => {
-        const dep = box.get(Dependency);
-        return { dep };
-      });
+      const TestFactory = factory((box) => ({ dep: box.get(Dependency) }));
 
-      const instance = box.get(TestFactory);
+      const { dep } = box.get(TestFactory);
 
-      expect(instance.dep).toBeInstanceOf(Dependency);
-      expect(instance.dep.value).toBe("dependency");
+      expect(dep).toBeInstanceOf(Dependency);
+      expect(dep).toBe(box.get(Dependency));
     });
 
-    it("should work with interfaces and implementations", () => {
+    it("should cache the result with box.get()", () => {
       const box = new Box();
 
-      interface Logger {
-        log(message: string): void;
-      }
+      const TestFactory = factory(() => ({ id: Math.random() }));
 
-      class ConsoleLogger implements Logger {
-        messages: string[] = [];
+      const instance1 = box.get(TestFactory);
+      const instance2 = box.get(TestFactory);
 
-        log(message: string): void {
-          this.messages.push(message);
-        }
-      }
+      expect(instance1).toBe(instance2);
+    });
 
-      const LoggerFactory = factory((box: Box): Logger => {
-        return new ConsoleLogger();
-      });
+    it("should not cache the result with box.new()", () => {
+      const box = new Box();
 
-      const logger = box.get(LoggerFactory) as ConsoleLogger;
-      logger.log("test");
+      const TestFactory = factory(() => ({ id: Math.random() }));
 
-      expect(logger.messages).toEqual(["test"]);
+      const instance1 = box.new(TestFactory);
+      const instance2 = box.new(TestFactory);
+
+      expect(instance1).not.toBe(instance2);
     });
   });
 
@@ -392,19 +396,6 @@ describe("Box", () => {
       expect(instance.timeout).toBe(3000);
     });
 
-    it("should return the same value without caching", () => {
-      const box = new Box();
-
-      const value = { id: Math.random() };
-      const ValueConstant = constant(value);
-
-      const instance1 = box.get(ValueConstant);
-      const instance2 = box.get(ValueConstant);
-
-      expect(instance1).toBe(instance2);
-      expect(instance1).toBe(value);
-    });
-
     it("should work with primitive values", () => {
       const box = new Box();
 
@@ -415,6 +406,32 @@ describe("Box", () => {
       expect(box.get(ApiUrl)).toBe("https://api.example.com");
       expect(box.get(Port)).toBe(3000);
       expect(box.get(IsEnabled)).toBe(true);
+    });
+
+    it("should return same uncached value with box.new()", () => {
+      const box = new Box();
+
+      const value = { id: Math.random() };
+      const ValueConstant = constant(value);
+
+      const instance1 = box.new(ValueConstant);
+      const instance2 = box.new(ValueConstant);
+
+      expect(instance1).toBe(instance2);
+      expect(Box.clear(box, ValueConstant)).toBe(false);
+    });
+
+    it("should return same uncached value with box.get()", () => {
+      const box = new Box();
+
+      const value = { id: Math.random() };
+      const ValueConstant = constant(value);
+
+      const instance1 = box.get(ValueConstant);
+      const instance2 = box.get(ValueConstant);
+
+      expect(instance1).toBe(instance2);
+      expect(Box.clear(box, ValueConstant)).toBe(false);
     });
 
     it("should be usable as dependencies in other constructors", () => {
@@ -434,43 +451,31 @@ describe("Box", () => {
 
       expect(client.config.apiUrl).toBe("https://api.example.com");
     });
-
-    it("should work with box.for().get()", () => {
-      const box = new Box();
-
-      const DatabaseUrl = constant("postgres://localhost:5432/mydb");
-
-      class Database {
-        constructor(public url: string) {}
-      }
-
-      const db = box.for(Database).get(DatabaseUrl);
-
-      expect(db.url).toBe("postgres://localhost:5432/mydb");
-    });
   });
 
-  describe("derive", () => {
-    it("should create a new value on every resolution", () => {
+  describe("computed", () => {
+    it("should create a new uncached value with box.new()", () => {
       const box = new Box();
 
-      const RandomValue = derive(() => Math.random());
-
-      const value1 = box.get(RandomValue);
-      const value2 = box.get(RandomValue);
-
-      expect(value1).not.toBe(value2);
-    });
-
-    it("should create a new value with box.new()", () => {
-      const box = new Box();
-
-      const RandomValue = derive(() => Math.random());
+      const RandomValue = computed(() => Math.random());
 
       const value1 = box.new(RandomValue);
       const value2 = box.new(RandomValue);
 
       expect(value1).not.toBe(value2);
+      expect(Box.clear(box, RandomValue)).toBe(false);
+    });
+
+    it("should create a new uncached value with box.get()", () => {
+      const box = new Box();
+
+      const RandomValue = computed(() => Math.random());
+
+      const value1 = box.get(RandomValue);
+      const value2 = box.get(RandomValue);
+
+      expect(value1).not.toBe(value2);
+      expect(Box.clear(box, RandomValue)).toBe(false);
     });
 
     it("should receive the box as an argument", () => {
@@ -480,300 +485,20 @@ describe("Box", () => {
         url = "postgres://localhost";
       }
 
-      const DbUrl = derive((box) => box.get(Database).url);
-
-      expect(box.get(DbUrl)).toBe("postgres://localhost");
-    });
-  });
-
-  describe("all", () => {
-    describe("get", () => {
-      it("should resolve an array of constructors as cached instances", () => {
-        const box = new Box();
-
-        class ServiceA {
-          name = "A";
-        }
-
-        class ServiceB {
-          name = "B";
-        }
-
-        const [a, b] = box.all.get([ServiceA, ServiceB]);
-
-        expect(a).toBeInstanceOf(ServiceA);
-        expect(b).toBeInstanceOf(ServiceB);
-        expect(a.name).toBe("A");
-        expect(b.name).toBe("B");
-        expect(a).toBe(box.get(ServiceA));
-        expect(b).toBe(box.get(ServiceB));
-      });
-
-      it("should resolve an object of constructors as cached instances", () => {
-        const box = new Box();
-
-        class ServiceA {
-          name = "A";
-        }
-
-        class ServiceB {
-          name = "B";
-        }
-
-        const { a, b } = box.all.get({ a: ServiceA, b: ServiceB });
-
-        expect(a).toBeInstanceOf(ServiceA);
-        expect(b).toBeInstanceOf(ServiceB);
-        expect(a.name).toBe("A");
-        expect(b.name).toBe("B");
-        expect(a).toBe(box.get(ServiceA));
-        expect(b).toBe(box.get(ServiceB));
-      });
-
-      it("should work with factory and constant constructors", () => {
-        const box = new Box();
-
-        const ConfigFactory = factory((box: Box) => ({
-          port: 3000,
-        }));
-
-        const ApiUrl = constant("https://api.example.com");
-
-        class Database {
-          name = "db";
-        }
-
-        const [config, url, db] = box.all.get([
-          ConfigFactory,
-          ApiUrl,
-          Database,
-        ]);
-
-        expect(config.port).toBe(3000);
-        expect(url).toBe("https://api.example.com");
-        expect(db).toBeInstanceOf(Database);
-        expect(config).toBe(box.get(ConfigFactory));
-        expect(url).toBe(box.get(ApiUrl));
-        expect(db).toBe(box.get(Database));
-      });
-    });
-
-    describe("new", () => {
-      it("should resolve an array of constructors as transient instances", () => {
-        const box = new Box();
-
-        class ServiceA {
-          id = Math.random();
-        }
-
-        class ServiceB {
-          id = Math.random();
-        }
-
-        const [a1, b1] = box.all.new([ServiceA, ServiceB]);
-        const [a2, b2] = box.all.new([ServiceA, ServiceB]);
-
-        expect(a1).toBeInstanceOf(ServiceA);
-        expect(b1).toBeInstanceOf(ServiceB);
-        expect(a1).not.toBe(a2);
-        expect(b1).not.toBe(b2);
-      });
-
-      it("should resolve an object of constructors as transient instances", () => {
-        const box = new Box();
-
-        class ServiceA {
-          id = Math.random();
-        }
-
-        const result1 = box.all.new({ a: ServiceA });
-        const result2 = box.all.new({ a: ServiceA });
-
-        expect(result1.a).toBeInstanceOf(ServiceA);
-        expect(result1.a).not.toBe(result2.a);
-      });
-
-      it("should not affect the box cache", () => {
-        const box = new Box();
-
-        class ServiceA {
-          id = Math.random();
-        }
-
-        const [transient] = box.all.new([ServiceA]);
-        const cached = box.get(ServiceA);
-
-        expect(transient).not.toBe(cached);
-      });
-    });
-  });
-
-  describe("for", () => {
-    it("should create an instance with dependencies from box using get", () => {
-      const box = new Box();
-
-      class ServiceA {
-        name = "A";
-      }
-
-      class ServiceB {
-        name = "B";
-      }
-
-      class App {
-        constructor(public serviceA: ServiceA, public serviceB: ServiceB) {}
-      }
-
-      const app = box.for(App).get(ServiceA, ServiceB);
-
-      expect(app).toBeInstanceOf(App);
-      expect(app.serviceA).toBeInstanceOf(ServiceA);
-      expect(app.serviceB).toBeInstanceOf(ServiceB);
-      expect(app.serviceA.name).toBe("A");
-      expect(app.serviceB.name).toBe("B");
-    });
-
-    it("should create an instance with dependencies using new", () => {
-      const box = new Box();
-
-      class Dependency {
-        id = Math.random();
-      }
-
-      class TestClass {
-        constructor(public dep: Dependency) {}
-      }
-
-      const instance1 = box.for(TestClass).new(Dependency);
-      const instance2 = box.for(TestClass).new(Dependency);
-
-      expect(instance1).toBeInstanceOf(TestClass);
-      expect(instance2).toBeInstanceOf(TestClass);
-      expect(instance1).not.toBe(instance2);
-      expect(instance1.dep).not.toBe(instance2.dep);
-    });
-
-    it("should use cached dependencies with get", () => {
-      const box = new Box();
-
-      class Dependency {
-        id = Math.random();
-      }
-
-      class ClassA {
-        constructor(public dep: Dependency) {}
-      }
-
-      class ClassB {
-        constructor(public dep: Dependency) {}
-      }
-
-      const instanceA = box.for(ClassA).get(Dependency);
-      const instanceB = box.for(ClassB).get(Dependency);
-
-      expect(instanceA.dep).toBe(instanceB.dep);
-    });
-
-    it("should work with factory constructors as dependencies", () => {
-      const box = new Box();
-
-      interface Logger {
-        log(message: string): void;
-      }
-
-      class ConsoleLogger implements Logger {
-        log(message: string): void {
-          console.log(message);
-        }
-      }
-
-      const LoggerFactory = factory((box: Box): Logger => {
-        return new ConsoleLogger();
-      });
-
-      class Service {
-        constructor(public logger: Logger) {}
-      }
-
-      const service = box.for(Service).get(LoggerFactory);
-
-      expect(service).toBeInstanceOf(Service);
-      expect(service.logger).toBeInstanceOf(ConsoleLogger);
-    });
-
-    it("should handle multiple dependencies of different types", () => {
-      const box = new Box();
-
-      class Database {
-        name = "db";
-      }
-
-      const ConfigFactory = factory((box: Box) => {
-        return { port: 3000 };
-      });
-
-      class Cache {
-        type = "redis";
-      }
-
-      class Application {
-        constructor(
-          public db: Database,
-          public config: { port: number },
-          public cache: Cache,
-        ) {}
-      }
-
-      const app = box.for(Application).get(Database, ConfigFactory, Cache);
-
-      expect(app.db).toBeInstanceOf(Database);
-      expect(app.config.port).toBe(3000);
-      expect(app.cache).toBeInstanceOf(Cache);
-    });
-
-    it("should create transient instances and dependencies with new", () => {
-      const box = new Box();
-
-      class SharedDep {
-        id = Math.random();
-      }
-
-      class TestClass {
-        constructor(public dep: SharedDep) {}
-      }
-
-      const instance1 = box.for(TestClass).new(SharedDep);
-      const instance2 = box.for(TestClass).new(SharedDep);
-
-      expect(instance1).not.toBe(instance2);
-      expect(instance1.dep).not.toBe(instance2.dep);
-      expect(instance1.dep.id).not.toBe(instance2.dep.id);
-    });
-
-    it("should not cache instances created with for().get", () => {
-      const box = new Box();
-
-      class Dependency {
-        id = Math.random();
-      }
-
-      class TestClass {
-        constructor(public dep: Dependency) {}
-      }
-
-      const instance1 = box.for(TestClass).get(Dependency);
-      const instance2 = box.for(TestClass).get(Dependency);
-      const cachedDep = box.get(Dependency);
-
-      expect(instance1).not.toBe(instance2);
-      expect(instance1.dep).toBe(cachedDep);
-      expect(instance2.dep).toBe(cachedDep);
-      expect(instance1.dep).toBe(instance2.dep);
+      const DbObject = computed((box) => ({
+        db: box.get(Database),
+        url: box.get(Database).url,
+      }));
+
+      const { db, url } = box.get(DbObject);
+
+      expect(db).toBe(box.get(Database));
+      expect(url).toBe("postgres://localhost");
     });
   });
 
   describe("mock", () => {
-    it("should mock a class with a custom instance", () => {
+    it("should replace a constructor with a custom value", () => {
       const box = new Box();
 
       class TestClass {
@@ -789,69 +514,7 @@ describe("Box", () => {
       expect(instance.value).toBe("mocked");
     });
 
-    it("should mock a factory with a custom instance", () => {
-      const box = new Box();
-
-      const TestFactory = factory((box: Box) => {
-        return { value: "original" };
-      });
-
-      const mockInstance = { value: "mocked" };
-      Box.mock(box, TestFactory, mockInstance);
-
-      const instance = box.get(TestFactory);
-
-      expect(instance).toBe(mockInstance);
-      expect(instance.value).toBe("mocked");
-    });
-
-    it("should allow mocking dependencies for testing", () => {
-      const box = new Box();
-
-      interface Logger {
-        log(message: string): void;
-      }
-
-      class ConsoleLogger implements Logger {
-        log(message: string): void {
-          console.log(message);
-        }
-      }
-
-      const LoggerFactory = factory((box: Box): Logger => {
-        return new ConsoleLogger();
-      });
-
-      class UserService {
-        constructor(private logger: Logger) {}
-
-        static init(box: Box) {
-          return new UserService(box.get(LoggerFactory));
-        }
-
-        createUser(name: string) {
-          this.logger.log(`Creating user: ${name}`);
-        }
-      }
-
-      class MockLogger implements Logger {
-        messages: string[] = [];
-
-        log(message: string): void {
-          this.messages.push(message);
-        }
-      }
-
-      const mockLogger = new MockLogger();
-      Box.mock(box, LoggerFactory, mockLogger);
-
-      const service = box.get(UserService);
-      service.createUser("Alice");
-
-      expect(mockLogger.messages).toEqual(["Creating user: Alice"]);
-    });
-
-    it("should mock before instance creation", () => {
+    it("should replace a constructor's dependency with a custom value", () => {
       const box = new Box();
 
       class Dependency {
@@ -912,7 +575,7 @@ describe("Box", () => {
 
       const a1 = box.get(ServiceA);
       const b1 = box.get(ServiceB);
-      Box.clear(box, ServiceA);
+      expect(Box.clear(box, ServiceA)).toBe(true);
       const a2 = box.get(ServiceA);
       const b2 = box.get(ServiceB);
 
@@ -933,12 +596,28 @@ describe("Box", () => {
 
       const a1 = box.get(ServiceA);
       const b1 = box.get(ServiceB);
-      Box.clear(box);
+      expect(Box.clear(box)).toBe(true);
       const a2 = box.get(ServiceA);
       const b2 = box.get(ServiceB);
 
       expect(a1).not.toBe(a2);
       expect(b1).not.toBe(b2);
+    });
+
+    it("should return false when clearing a constructor that was not cached", () => {
+      const box = new Box();
+
+      class Service {
+        id = Math.random();
+      }
+
+      expect(Box.clear(box, Service)).toBe(false);
+    });
+
+    it("should return false when clearing an empty box", () => {
+      const box = new Box();
+
+      expect(Box.clear(box)).toBe(false);
     });
   });
 
@@ -1027,34 +706,6 @@ describe("Box", () => {
       expect(app.serviceA.config).toBe(app.serviceB.config);
       expect(app.serviceA.config).toBe(app.config);
       expect(app.serviceB.config).toBe(app.config);
-    });
-
-    it("should work with mixed class and factory constructors", () => {
-      const box = new Box();
-
-      class ClassDep {
-        type = "class";
-      }
-
-      const FactoryDep = factory((box: Box) => {
-        return { type: "factory" };
-      });
-
-      class MixedService {
-        constructor(
-          public classDep: ClassDep,
-          public factoryDep: ConstructorInstanceType<typeof FactoryDep>,
-        ) {}
-
-        static init(box: Box) {
-          return new MixedService(box.get(ClassDep), box.get(FactoryDep));
-        }
-      }
-
-      const service = box.get(MixedService);
-
-      expect(service.classDep.type).toBe("class");
-      expect(service.factoryDep.type).toBe("factory");
     });
   });
 });

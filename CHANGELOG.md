@@ -1,5 +1,13 @@
 # getbox
 
+## 2.1.0
+
+### Minor Changes
+
+- 4b769d7: `Box` resolves with same instance with `box.get()`
+- 4b769d7: Export `boxCache` to opt classes out of caching
+- 4b769d7: Add `Box.fn()` for manual initializers
+
 ## 2.0.0
 
 ### Minor Changes

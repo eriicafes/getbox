@@ -33,9 +33,9 @@ describe("Box", () => {
       class TestClass {
         constructor(public depA: DependencyA, public depB: DependencyB) {}
 
-        static init(box: Box) {
-          return new TestClass(box.get(DependencyA), box.get(DependencyB));
-        }
+        static init = Box.fn(
+          (box) => new TestClass(box.get(DependencyA), box.get(DependencyB)),
+        );
       }
 
       const instance1 = box.new(TestClass);
@@ -90,7 +90,7 @@ describe("Box", () => {
       expect(a1).not.toBe(a2);
     });
 
-    it("should treat an object with an 'init' method and extra properties as a constructor", () => {
+    it("should treat an object with an intializer 'init' and extra properties as a constructor", () => {
       const box = new Box();
 
       class Database {
@@ -103,15 +103,13 @@ describe("Box", () => {
 
       // init is a method called, so treats like a constructor
       const result = box.new({
-        init(box: Box) {
-          return box.get(Database);
-        },
+        init: Box.fn((box) => box.get(Database)),
         logger: Logger,
       });
       expect(result).toBeInstanceOf(Database);
     });
 
-    it("should treat an object map with an 'init' key that is a class as an object map", () => {
+    it("should treat an object with a non-initializer 'init' as an object map", () => {
       const box = new Box();
 
       class Database {
@@ -127,6 +125,15 @@ describe("Box", () => {
       });
       expect(result.init).toBeInstanceOf(Database);
       expect(result.logger.name).toBe("logger");
+    });
+
+    it("should create a new Box instance when resolving Box", () => {
+      const box = new Box();
+
+      const newBox = box.new(Box);
+
+      expect(newBox).toBeInstanceOf(Box);
+      expect(newBox).not.toBe(box);
     });
   });
 
@@ -159,9 +166,9 @@ describe("Box", () => {
       class TestClass {
         constructor(public depA: DependencyA, public depB: DependencyB) {}
 
-        static init(box: Box) {
-          return new TestClass(box.get(DependencyA), box.get(DependencyB));
-        }
+        static init = Box.fn(
+          (box) => new TestClass(box.get(DependencyA), box.get(DependencyB)),
+        );
       }
 
       const instance1 = box.get(TestClass);
@@ -220,7 +227,7 @@ describe("Box", () => {
       expect(b1).toBe(box.get(ServiceB));
     });
 
-    it("should treat an object with an 'init' method and extra properties as a constructor", () => {
+    it("should treat an object with an intializer 'init' and extra properties as a constructor", () => {
       const box = new Box();
 
       class Database {
@@ -233,15 +240,13 @@ describe("Box", () => {
 
       // init is a method called, so treats like a constructor
       const result = box.get({
-        init(box: Box) {
-          return box.get(Database);
-        },
+        init: Box.fn((box) => box.get(Database)),
         logger: Logger,
       });
       expect(result).toBeInstanceOf(Database);
     });
 
-    it("should treat an object map with an 'init' key that is a class as an object map", () => {
+    it("should treat an object with a non-intializer 'init' as an object map", () => {
       const box = new Box();
 
       class Database {
@@ -257,6 +262,12 @@ describe("Box", () => {
       });
       expect(result.init).toBeInstanceOf(Database);
       expect(result.logger.name).toBe("logger");
+    });
+
+    it("should return the current box instance when resolving Box", () => {
+      const box = new Box();
+
+      expect(box.get(Box)).toBe(box);
     });
   });
 
@@ -323,9 +334,7 @@ describe("Box", () => {
       class UserService {
         constructor() {}
 
-        static init(box: Box) {
-          return box.get(Database);
-        }
+        static init = Box.fn((box) => box.get(Database));
       }
 
       const result = box.get(UserService);
@@ -442,9 +451,7 @@ describe("Box", () => {
       class ApiClient {
         constructor(public config: { apiUrl: string }) {}
 
-        static init(box: Box) {
-          return new ApiClient(box.get(ConfigConstant));
-        }
+        static init = Box.fn((box) => new ApiClient(box.get(ConfigConstant)));
       }
 
       const client = box.get(ApiClient);
@@ -524,9 +531,7 @@ describe("Box", () => {
       class TestClass {
         constructor(public dep: Dependency) {}
 
-        static init(box: Box) {
-          return new TestClass(box.get(Dependency));
-        }
+        static init = Box.fn((box) => new TestClass(box.get(Dependency)));
       }
 
       const mockDep = { value: "mocked" };
@@ -632,25 +637,19 @@ describe("Box", () => {
       class Repository {
         constructor(public db: Database) {}
 
-        static init(box: Box) {
-          return new Repository(box.get(Database));
-        }
+        static init = Box.fn((box) => new Repository(box.get(Database)));
       }
 
       class Service {
         constructor(public repo: Repository) {}
 
-        static init(box: Box) {
-          return new Service(box.get(Repository));
-        }
+        static init = Box.fn((box) => new Service(box.get(Repository)));
       }
 
       class Controller {
         constructor(public service: Service) {}
 
-        static init(box: Box) {
-          return new Controller(box.get(Service));
-        }
+        static init = Box.fn((box) => new Controller(box.get(Service)));
       }
 
       const controller = box.get(Controller);
@@ -672,17 +671,13 @@ describe("Box", () => {
       class ServiceA {
         constructor(public config: SharedConfig) {}
 
-        static init(box: Box) {
-          return new ServiceA(box.get(SharedConfig));
-        }
+        static init = Box.fn((box) => new ServiceA(box.get(SharedConfig)));
       }
 
       class ServiceB {
         constructor(public config: SharedConfig) {}
 
-        static init(box: Box) {
-          return new ServiceB(box.get(SharedConfig));
-        }
+        static init = Box.fn((box) => new ServiceB(box.get(SharedConfig)));
       }
 
       class App {
@@ -692,13 +687,14 @@ describe("Box", () => {
           public config: SharedConfig,
         ) {}
 
-        static init(box: Box) {
-          return new App(
-            box.get(ServiceA),
-            box.get(ServiceB),
-            box.get(SharedConfig),
-          );
-        }
+        static init = Box.fn(
+          (box) =>
+            new App(
+              box.get(ServiceA),
+              box.get(ServiceB),
+              box.get(SharedConfig),
+            ),
+        );
       }
 
       const app = box.get(App);

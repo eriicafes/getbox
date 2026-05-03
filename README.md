@@ -14,7 +14,7 @@ npm install getbox
 
 ## Usage
 
-`getbox` has a very small API surface. You typically only need `box.get()` and optionally `static init` or the `factory` helper.
+`getbox` has a very small API surface. You typically only need `box.get()` and optionally `Box.init()` or the `factory` helper.
 
 For an alternative pattern using AsyncLocalStorage where classes can resolve dependencies directly, see [getbox/context](./CONTEXT.md).
 
@@ -73,19 +73,35 @@ const service = box.get(UserService);
 service.createUser("Alice");
 ```
 
-`Box.init` is shorthand for writing the `static init` function yourself.
+Use `Box.fn` to write the initializer manually when you need more control.
 
 ```ts
 class UserService {
   constructor(private db: Database, private logger: Logger) {}
 
-  static init(box: Box) {
+  static init = Box.fn((box) => {
     return new UserService(box.get(Database), box.get(LoggerFactory));
-  }
+  });
 }
 ```
 
-If `static init` is defined, it takes priority over the class constructor.
+If a `static init` initializer is defined, it takes priority over the class constructor.
+
+Set `static [boxCache] = false` to opt a class out of caching. The box will call the initializer on every `box.get()` instead of returning a cached instance.
+
+```ts
+import { Box, boxCache } from "getbox";
+
+class RequestContext {
+  timestamp = Date.now();
+  static [boxCache] = false;
+}
+
+const box = new Box();
+const ctx1 = box.get(RequestContext);
+const ctx2 = box.get(RequestContext);
+console.log(ctx1 === ctx2); // false
+```
 
 ### Factory functions
 
@@ -194,6 +210,19 @@ const [db4] = box.new([Database]);
 ```
 
 > `box.get()` does not cache `computed` or `constant` values.
+
+`Box` itself can be resolved as a dependency. `box.get(Box)` returns the current box instance.
+
+```ts
+class ServiceLocator {
+  constructor(private box: Box) {}
+  static init = Box.init(ServiceLocator).get(Box);
+}
+
+const box = new Box();
+const locator = box.get(ServiceLocator);
+console.log(locator.box === box); // true
+```
 
 ## Mocking
 

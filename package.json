@@ -1,6 +1,6 @@
 {
   "name": "getbox",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "Lightweight dependency injection for TypeScript",
   "private": false,
   "main": "./dist/index.cjs",
